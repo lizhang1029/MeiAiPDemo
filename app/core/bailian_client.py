@@ -97,10 +97,14 @@ def _mock_score(user_prompt: str) -> Dict[str, Any]:
     dim_key = _search(r"key=([a-z_]+),\s*满分", user_prompt) or "unknown"
     max_score = float(_search(r"满分=([0-9.]+),\s*模态", user_prompt) or 10)
 
-    answer = _extract_block(
-        user_prompt, "# 候选人回答（ASR转写）", ["#", "\n# "]
-    )
-    answer = answer.split("\n#")[0].strip()
+    # 提取回答块（标题以「# 候选人回答」开头，剩余括号说明可能变化）
+    a_start = user_prompt.find("# 候选人回答")
+    if a_start != -1:
+        a_start = user_prompt.find("\n", a_start) + 1
+        a_end = user_prompt.find("\n#", a_start)
+        answer = user_prompt[a_start:(a_end if a_end != -1 else len(user_prompt))].strip()
+    else:
+        answer = ""
 
     # 启发式：依据回答长度、结构词、专业词密度估计质量比例 (0.4~0.95)
     length = len(answer)
@@ -113,14 +117,16 @@ def _mock_score(user_prompt: str) -> Dict[str, Any]:
         ratio = 0.45 + min(length, 400) / 400 * 0.25 + min(structure_hits, 4) * 0.04 + min(domain_hits, 6) * 0.03
         ratio = max(0.2, min(0.95, ratio))
 
-    score = round(max_score * ratio, 1)
+    # 分数取整数（不出现小数点）
+    score = int(round(max_score * ratio))
+    score = max(0, min(int(max_score), score))
 
     # 等级
     level = _mock_level(score, max_score)
 
     deductions = []
-    if ratio < 0.9 and length > 0:
-        gap = round(max_score - score, 1)
+    if length > 0:
+        gap = int(max_score) - score
         if gap > 0:
             reasons = []
             if structure_hits == 0:
@@ -131,14 +137,14 @@ def _mock_score(user_prompt: str) -> Dict[str, Any]:
                 reasons.append("内容展开不充分，信息量偏少")
             if not reasons:
                 reasons.append("表达与内容细节仍有提升空间")
-            per = round(gap / len(reasons), 1)
-            for r in reasons:
-                deductions.append(
-                    {"reason": r, "points": per, "evidence": _snippet(answer)}
-                )
+            for reason, pts in zip(reasons, _split_int(gap, len(reasons))):
+                if pts > 0:
+                    deductions.append(
+                        {"reason": reason, "points": pts, "evidence": _snippet(answer)}
+                    )
     if length == 0:
         deductions.append(
-            {"reason": "未检测到有效回答内容", "points": max_score, "evidence": "（空）"}
+            {"reason": "未检测到有效回答内容", "points": int(max_score), "evidence": "（空）"}
         )
 
     evidence = [
@@ -202,3 +208,11 @@ def _snippet(text: str, n: int = 60) -> str:
 def _search(pattern: str, text: str) -> Optional[str]:
     m = re.search(pattern, text)
     return m.group(1) if m else None
+
+
+def _split_int(total: int, parts: int) -> List[int]:
+    """把整数 total 尽量平均地拆成 parts 份整数，和恰为 total。"""
+    if parts <= 0:
+        return []
+    base, rem = divmod(total, parts)
+    return [base + (1 if i < rem else 0) for i in range(parts)]

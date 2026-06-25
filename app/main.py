@@ -2,6 +2,8 @@
 
 REST API:
 - GET  /rubric              查看评分体系
+- GET  /positions          岗位列表
+- GET  /positions/{id}/paper  按岗位生成试卷（每位考生题目可不同）
 - GET  /kb/search?q=...     RAG 知识库检索
 - POST /interviews         创建面试 + 提交评分（一步式，便于 demo）
 - GET  /interviews/{id}    获取评分结果
@@ -19,6 +21,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, PlainTextResponse
 
 from .core.knowledge_base import KnowledgeBase
+from .core.question_bank import get_paper, list_positions
 from .core.rubric import rubric_to_dict
 from .core.schemas import ScoreRequest, ScoreResult
 from .core.scoring_engine import ScoringEngine
@@ -44,6 +47,19 @@ def health() -> Dict[str, Any]:
 @app.get("/rubric")
 def get_rubric() -> Dict[str, Any]:
     return rubric_to_dict()
+
+
+@app.get("/positions")
+def get_positions() -> Dict[str, Any]:
+    return {"positions": list_positions()}
+
+
+@app.get("/positions/{position_id}/paper")
+def get_position_paper(position_id: str, variant: int = 0) -> Dict[str, Any]:
+    paper = get_paper(position_id, variant=variant)
+    if not paper:
+        raise HTTPException(status_code=404, detail="未找到该岗位")
+    return {"position": position_id, "variant": variant, "paper": paper}
 
 
 @app.get("/kb/search")
@@ -81,11 +97,13 @@ def get_evidence(interview_id: str) -> Dict[str, Any]:
         chain.append(
             {
                 "dimension": dim["dimension_name"],
+                "question": dim.get("question", ""),
                 "score": dim["score"],
                 "max_score": dim["max_score"],
                 "deductions": dim["deductions"],
                 "evidence": dim["evidence"],
                 "confidence": dim["confidence"],
+                "removed_examiner_segments": dim.get("removed_segments", []),
             }
         )
     return {"interview_id": interview_id, "evidence_chain": chain}
@@ -112,6 +130,7 @@ def _render_report(result: Dict[str, Any]) -> str:
         f"# AI 辅助评分报告（建议分，需评委确认）",
         "",
         f"- 考生: {c.get('name','')} ({c.get('candidate_no','')})",
+        f"- 报考岗位: {c.get('position','')}",
         f"- 总分: **{result['total_score']} / {result['max_total']}** —— {result['overall_level']}",
         f"- 评分引擎模式: {result['engine_mode']}",
         f"- 生成时间: {result['created_at']}",
@@ -128,6 +147,12 @@ def _render_report(result: Dict[str, Any]) -> str:
     lines += ["", "## 扣分与证据链", ""]
     for d in result["dimensions"]:
         lines.append(f"### {d['dimension_name']}（{d['score']}/{d['max_score']}）")
+        if d.get("question"):
+            lines.append(f"- 题目: {d['question']}")
+        if d.get("removed_segments"):
+            lines.append("- 已剔除考官读题/无关内容:")
+            for seg in d["removed_segments"]:
+                lines.append(f"  - [{seg.get('reason','')}] {seg.get('text','')}")
         lines.append(f"- 评分依据: {d['rationale']}")
         if d["deductions"]:
             lines.append("- 扣分项:")

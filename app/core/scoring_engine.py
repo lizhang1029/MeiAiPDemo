@@ -9,6 +9,7 @@ from .bailian_client import BailianClient
 from .knowledge_base import KnowledgeBase
 from .prompts import SYSTEM_PROMPT, build_scoring_prompt, build_review_prompt
 from .rubric import DIMENSION_BY_KEY, TOTAL_SCORE, Dimension, level_for
+from .transcript import clean_transcript
 
 
 class ScoringEngine:
@@ -22,9 +23,14 @@ class ScoringEngine:
 
     def score_dimension(self, dim: Dimension, item: Dict[str, Any]) -> Dict[str, Any]:
         question = item.get("question", "")
-        answer = item.get("answer_transcript", "")
+        raw_answer = item.get("answer_transcript", "")
         features = item.get("multimodal_features")
         reference = item.get("reference_answer")
+
+        # 剔除考官读题，仅保留考生回答
+        cleaned = clean_transcript(raw_answer, question=question)
+        answer = cleaned["answer"]
+        removed = cleaned["removed"]
 
         # 内容类/问答类维度引入 RAG 证据
         rag_evidence: List[Dict[str, Any]] = []
@@ -40,23 +46,40 @@ class ScoringEngine:
             reference_answer=reference,
         )
         raw = self.client.chat_json(SYSTEM_PROMPT, prompt)
-        return self._normalize(dim, raw, rag_evidence)
+        return self._normalize(dim, raw, rag_evidence, question=question, removed=removed)
 
     def _normalize(
-        self, dim: Dimension, raw: Dict[str, Any], rag_evidence: List[Dict[str, Any]]
+        self,
+        dim: Dimension,
+        raw: Dict[str, Any],
+        rag_evidence: List[Dict[str, Any]],
+        question: str = "",
+        removed: List[Dict[str, str]] | None = None,
     ) -> Dict[str, Any]:
-        """校验/约束模型输出，确保分数合法并补全字段（校准机制）。"""
-        score = _to_float(raw.get("score"), 0.0)
-        score = max(0.0, min(dim.max_score, score))  # 约束到合法区间
+        """校验/约束模型输出，确保分数为合法整数并补全字段（校准机制）。"""
+        max_score = int(dim.max_score)
+        score = _to_int(raw.get("score"), 0)
+        score = max(0, min(max_score, score))  # 约束到合法整数区间
 
         # 校准：分项分之和不得超过维度满分
         items = raw.get("items") or []
         if items:
-            item_sum = sum(_to_float(i.get("score"), 0.0) for i in items)
-            if item_sum > 0:
-                # 若分项与总分严重不符，以分项之和为准（截断到满分）
-                if abs(item_sum - score) > 0.5:
-                    score = min(dim.max_score, item_sum)
+            for it in items:
+                it["score"] = _to_int(it.get("score"), 0)
+            item_sum = sum(_to_int(i.get("score"), 0) for i in items)
+            if item_sum > 0 and abs(item_sum - score) >= 1:
+                score = min(max_score, item_sum)
+
+        # 扣分取整数
+        deductions = []
+        for d in raw.get("deductions") or []:
+            deductions.append(
+                {
+                    "reason": d.get("reason", ""),
+                    "points": _to_int(d.get("points"), 0),
+                    "evidence": d.get("evidence", ""),
+                }
+            )
 
         evidence = raw.get("evidence") or []
         if not evidence and rag_evidence:
@@ -68,14 +91,16 @@ class ScoringEngine:
         return {
             "dimension_key": dim.key,
             "dimension_name": dim.name,
-            "max_score": dim.max_score,
-            "score": round(score, 1),
+            "question": question,
+            "max_score": max_score,
+            "score": score,
             "level": raw.get("level") or level_for(dim, score),
             "items": items,
-            "deductions": raw.get("deductions") or [],
+            "deductions": deductions,
             "rationale": raw.get("rationale", ""),
             "evidence": evidence,
             "confidence": _to_float(raw.get("confidence"), 0.6),
+            "removed_segments": removed or [],
         }
 
     def score_interview(
@@ -89,7 +114,7 @@ class ScoringEngine:
                 continue
             dim_scores.append(self.score_dimension(dim, item))
 
-        total = round(sum(d["score"] for d in dim_scores), 1)
+        total = int(sum(d["score"] for d in dim_scores))
         overall = _overall_level(total)
 
         review = self.client.chat_json(
@@ -141,5 +166,12 @@ def _mock_review(dim_scores: List[Dict[str, Any]], total: float) -> Dict[str, An
 def _to_float(v: Any, default: float) -> float:
     try:
         return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def _to_int(v: Any, default: int) -> int:
+    try:
+        return int(round(float(v)))
     except (TypeError, ValueError):
         return default

@@ -16,7 +16,7 @@
     .card h2 { font-size:15px; margin:0 0 12px; color:var(--accent); }
     label { display:block; font-size:12px; color:var(--muted); margin:10px 0 4px; }
     input, textarea, select { width:100%; background:#0f172a; border:1px solid #334155; color:var(--text); border-radius:8px; padding:8px 10px; font-size:13px; }
-    textarea { resize:vertical; min-height:64px; }
+    textarea { resize:vertical; min-height:70px; }
     .dim-block { border:1px dashed #334155; border-radius:10px; padding:12px; margin-bottom:12px; }
     .dim-block .t { font-size:13px; color:var(--accent); margin-bottom:6px; }
     button { background:var(--accent); color:#06283a; border:none; border-radius:8px; padding:10px 18px; font-weight:600; cursor:pointer; font-size:14px; }
@@ -33,8 +33,10 @@
     .small { font-size:12px; color:var(--muted); }
     .ded { font-size:12px; color:#fca5a5; margin-top:4px; }
     .ev { font-size:12px; color:#7dd3fc; margin-top:2px; }
+    .rm { font-size:12px; color:#fdba74; margin-top:2px; }
     .empty { color:var(--muted); font-size:13px; }
     a { color:var(--accent); }
+    .hint { font-size:11px; color:var(--muted); margin:2px 0 0; }
   </style>
 </head>
 <body>
@@ -45,47 +47,70 @@
 
   <div class="layout">
     <div class="card">
-      <h2>① 录入面试题目与回答</h2>
+      <h2>① 选择岗位 · 录入题目与回答</h2>
       <div class="row">
+        <div style="flex:1"><label>报考岗位</label><select id="position"></select></div>
         <div style="flex:1"><label>考生姓名</label><input id="name" value="张三" /></div>
         <div style="flex:1"><label>考号</label><input id="no" value="GX2026-001" /></div>
       </div>
+      <p class="hint">切换岗位会自动载入对应题目（每位考生题目可不同）。回答转写中以「考官：」开头的读题行会被自动剔除，仅对考生回答评分。</p>
       <div id="dims"></div>
       <div class="row" style="margin-top:8px">
         <button id="run">开始 AI 评分</button>
-        <button class="ghost" id="demo">填充示例数据</button>
+        <button class="ghost" id="demo">填充示例数据（含考官读题）</button>
       </div>
     </div>
 
     <div class="card">
       <h2>② 评分结果与证据链</h2>
-      <div id="result"><div class="empty">提交后在此显示总分、分项分、扣分原因、引用证据与 AI 置信度。</div></div>
+      <div id="result"><div class="empty">提交后在此显示总分（整数）、分项分、扣分原因、引用证据、AI 置信度，以及被剔除的考官读题内容。</div></div>
     </div>
   </div>
 
 <script>
 let RUBRIC = null;
+// 示例回答：故意加入「考官：」读题行，演示自动剔除
 const SAMPLE = {
-  language_expression: "大家好，我是导游张三。今天非常高兴为各位服务。我会用清晰流畅的普通话，带大家领略广西的山水之美，希望大家旅途愉快。",
-  route_explanation: "本次专题线路以漓江山水为主题。首先我们从象鼻山出发，它是桂林城徽；其次乘船游览漓江百里画廊，欣赏九马画山；最后到达兴安灵渠，感受秦代水利智慧。整条线路串联自然与历史文化。",
-  scenic_explanation: "象鼻山位于漓江与桃花江汇流处，因山形似巨象临江饮水而得名。我们沿江边动线讲解，先观全景，再看水月洞，最后讲述象山的传说，传递桂林山水文化的独特价值。",
-  service_qa: "导游服务流程包括接团准备、首站接待、行程讲解、安全提示和送团总结。全程要主动告知、规范礼仪，依据导游管理条例，不得擅自改变行程或诱导购物，始终把游客安全放在首位。",
-  contingency_qa: "如遇游客突发疾病，我会立即停止行程，拨打120，保护现场并安抚其他游客，同时上报旅行社，确保人身安全优先，方案合法合规、切实可行。",
-  knowledge_qa: "广西是中国唯一沿海的少数民族自治区，壮族三月三是国家级非遗，以对歌抛绣球闻名；湘江战役纪念馆是重要红色教育基地；灵渠是世界灌溉工程遗产。",
+  language_expression: "考官：请用一段话欢迎来自全国各地的游客，并介绍今天的行程安排。\n考生：各位游客大家好，我是导游张三，非常高兴为大家服务。今天我们将用清晰流畅的普通话，首先游览漓江，其次参观象鼻山，最后体验壮族民俗，祝大家旅途愉快。",
+  route_explanation: "考官：请设计并讲解一条'桂林山水'两日精华专题线路。\n考生：本次专题线路以漓江山水为主题。首先从象鼻山出发，它是桂林城徽；其次乘船游览漓江百里画廊，欣赏九马画山；最后到达兴安灵渠，感受秦代水利智慧，整条线路串联自然与历史文化。",
+  scenic_explanation: "考官：请现场讲解象鼻山景区，突出其特色与文化内涵。\n考生：象鼻山位于漓江与桃花江汇流处，因山形似巨象临江饮水而得名。我们沿江边动线讲解，先观全景，再看水月洞，最后讲述象山传说，传递桂林山水文化的独特价值。",
+  service_qa: "考官：请简述标准导游服务流程及全程应遵守的服务规范。\n考生：导游服务流程包括接团准备、首站接待、行程讲解、安全提示和送团总结。全程要主动告知、规范礼仪，依据导游管理条例，不得擅自改变行程或诱导购物，始终把游客安全放在首位。",
+  contingency_qa: "考官：行程途中一名游客突发疾病，你将如何处置？\n考生：我会立即停止行程，拨打120，保护现场并安抚其他游客，同时上报旅行社，确保人身安全优先，方案合法合规、切实可行。",
+  knowledge_qa: "考官：请介绍广西的世界遗产与国家级非物质文化遗产代表。\n考生：广西是中国唯一沿海的少数民族自治区，壮族三月三是国家级非遗，灵渠是世界灌溉工程遗产，刘三姐歌谣也是国家级非遗，湘江战役纪念馆是重要红色教育基地。",
 };
 
-async function loadRubric() {
+async function init(){
   const h = await (await fetch('/health')).json();
   document.getElementById('mode').textContent = 'engine: ' + h.engine_mode;
   RUBRIC = await (await fetch('/rubric')).json();
+  const pos = await (await fetch('/positions')).json();
+  const sel = document.getElementById('position');
+  sel.innerHTML = pos.positions.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+  sel.onchange = loadPaper;
+  renderDims();
+  await loadPaper();
+}
+
+function renderDims(){
   const box = document.getElementById('dims');
   box.innerHTML = '';
   RUBRIC.dimensions.forEach(d => {
     const div = document.createElement('div');
     div.className = 'dim-block';
     div.innerHTML = `<div class="t">${d.name} · 满分${d.max_score}（${d.modality}）</div>
+      <label>题目</label><input data-q="${d.key}" placeholder="该岗位下【${d.name}】题目" />
+      <label>回答转写（可含「考官：」读题行）</label>
       <textarea data-key="${d.key}" placeholder="输入候选人在【${d.name}】的回答/讲解转写..."></textarea>`;
     box.appendChild(div);
+  });
+}
+
+async function loadPaper(){
+  const pid = document.getElementById('position').value;
+  const data = await (await fetch(`/positions/${pid}/paper`)).json();
+  (data.paper||[]).forEach(item => {
+    const q = document.querySelector(`input[data-q="${item.dimension_key}"]`);
+    if (q) q.value = item.question || '';
   });
 }
 
@@ -101,11 +126,12 @@ function fillDemo(){
 async function run(){
   const items = [];
   document.querySelectorAll('#dims textarea').forEach(t => {
-    items.push({ dimension_key: t.getAttribute('data-key'),
-                 question: '请展示你在该维度的表现',
+    const k = t.getAttribute('data-key');
+    const q = document.querySelector(`input[data-q="${k}"]`);
+    items.push({ dimension_key: k, question: q ? q.value.trim() : '',
                  answer_transcript: t.value.trim() });
   });
-  const body = { candidate: { name: name.value, candidate_no: no.value }, items };
+  const body = { candidate: { name: name.value, candidate_no: no.value, position: document.getElementById('position').value }, items };
   const res = document.getElementById('result');
   res.innerHTML = '<div class="empty">AI 评分中…</div>';
   const r = await (await fetch('/interviews', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})).json();
@@ -123,9 +149,11 @@ function render(r){
   r.dimensions.forEach(d => {
     const rt = d.score / d.max_score;
     html += `<div class="dim-score"><div class="head"><b>${d.dimension_name}</b>
-      <span><span class="badge ${levelClass(rt)}">${d.level}</span> ${d.score}/${d.max_score} · 置信${d.confidence}</span></div>
-      <div class="bar"><i style="width:${rt*100}%"></i></div>
+      <span><span class="badge ${levelClass(rt)}">${d.level}</span> ${d.score}/${d.max_score} · 置信${d.confidence}</span></div>`;
+    if (d.question) html += `<div class="small">题目: ${d.question}</div>`;
+    html += `<div class="bar"><i style="width:${rt*100}%"></i></div>
       <div class="small">${d.rationale||''}</div>`;
+    (d.removed_segments||[]).forEach(s => html += `<div class="rm">✂ 已剔除考官读题: ${s.text}</div>`);
     (d.deductions||[]).forEach(x => html += `<div class="ded">− ${x.points}：${x.reason}<br><span class="small">证据: ${x.evidence||''}</span></div>`);
     (d.evidence||[]).forEach(x => html += `<div class="ev">[${x.type}] ${x.content} <span class="small">${x.ref||''}</span></div>`);
     html += `</div>`;
@@ -135,7 +163,7 @@ function render(r){
 
 document.getElementById('run').onclick = run;
 document.getElementById('demo').onclick = fillDemo;
-loadRubric();
+init();
 </script>
 </body>
 </html>

@@ -27,8 +27,8 @@
 
 ```bash
 cd ai-guide-scoring
-python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
+python -m venv .ai_venv/
+source .ai_venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
@@ -68,7 +68,7 @@ uvicorn app.main:app --reload --port 8000
 **第 5 步（可选）：接入真实阿里百炼大模型**
 
 ```bash
-export DASHSCOPE_API_KEY=sk-xxxx          # 阿里云百炼控制台获取
+export DASHSCOPE_API_KEY=sk-ws-H.RYHPMYL.Ad8Y.MEQCIGmPfjxKdXGD71tTCj438LA05D-xYuiHA8CsFTc1w6OWAiB0oeLvaFJqZhUDFBxzRCtNzhEWXrNNWGJ1n9g6ewCl1Q          # 阿里云百炼控制台获取
 export DASHSCOPE_MODEL=qwen-plus          # 可选，默认 qwen-plus
 uvicorn app.main:app --reload --port 8000
 ```

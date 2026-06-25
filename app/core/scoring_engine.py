@@ -104,18 +104,25 @@ class ScoringEngine:
         }
 
     def score_interview(
-        self, candidate: Dict[str, Any], items: List[Dict[str, Any]]
+        self,
+        candidate: Dict[str, Any],
+        items: List[Dict[str, Any]],
+        rubric: Dict[str, Dimension] | None = None,
+        total_max: int | None = None,
     ) -> Dict[str, Any]:
+        # rubric 为空时使用内置 7 维评分表；传入时支持「导入试卷」的动态维度
+        dim_map = rubric if rubric is not None else DIMENSION_BY_KEY
         dim_scores: List[Dict[str, Any]] = []
         for item in items:
             key = item.get("dimension_key")
-            dim = DIMENSION_BY_KEY.get(key)
+            dim = dim_map.get(key)
             if not dim:
                 continue
             dim_scores.append(self.score_dimension(dim, item))
 
         total = int(sum(d["score"] for d in dim_scores))
-        overall = _overall_level(total)
+        max_total = int(total_max) if total_max is not None else TOTAL_SCORE
+        overall = _overall_level(total, max_total)
 
         review = self.client.chat_json(
             SYSTEM_PROMPT, build_review_prompt(dim_scores, total)
@@ -127,7 +134,7 @@ class ScoringEngine:
             "interview_id": uuid.uuid4().hex[:12],
             "candidate": candidate,
             "total_score": total,
-            "max_total": TOTAL_SCORE,
+            "max_total": max_total,
             "overall_level": overall,
             "dimensions": dim_scores,
             "review": review,
@@ -136,12 +143,13 @@ class ScoringEngine:
         }
 
 
-def _overall_level(total: float) -> str:
-    if total >= 85:
+def _overall_level(total: float, max_total: float = 100) -> str:
+    pct = (total / max_total * 100) if max_total else 0
+    if pct >= 85:
         return "优秀"
-    if total >= 70:
+    if pct >= 70:
         return "良好"
-    if total >= 60:
+    if pct >= 60:
         return "合格"
     return "不合格"
 
@@ -150,7 +158,7 @@ def _mock_review(dim_scores: List[Dict[str, Any]], total: float) -> Dict[str, An
     weakest = min(dim_scores, key=lambda d: d["score"] / d["max_score"]) if dim_scores else None
     strongest = max(dim_scores, key=lambda d: d["score"] / d["max_score"]) if dim_scores else None
     return {
-        "summary": f"候选人总分 {total}/100，整体评定为「{_overall_level(total)}」。"
+        "summary": f"候选人总分 {total}，整体评定为「{_overall_level(total, sum(d['max_score'] for d in dim_scores) or 100)}」。"
         + (f"在「{strongest['dimension_name']}」表现突出。" if strongest else ""),
         "strengths": [strongest["dimension_name"]] if strongest else [],
         "improvements": [

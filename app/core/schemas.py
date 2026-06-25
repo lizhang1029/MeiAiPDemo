@@ -32,6 +32,25 @@ class ScoreRequest(BaseModel):
     items: List[QAItem] = Field(..., description="各维度的题目与回答")
 
 
+class CustomQAItem(BaseModel):
+    """导入试卷的维度题目与回答（维度/满分由接口下发的试题决定）。"""
+
+    dimension_key: str = Field(..., description="维度 key（由导入试卷解析得到）")
+    dimension_name: str = Field("", description="维度名称")
+    modality: str = Field("qa", description="模态：video|audio|content|qa|translation")
+    max_score: int = Field(10, description="该维度满分（来自实际作答题目分值）")
+    question: str = Field("", description="题目（接口下发）")
+    answer_transcript: str = Field("", description="候选人回答转写，可含「考官：」读题行")
+    reference_answer: Optional[str] = None
+
+
+class CustomScoreRequest(BaseModel):
+    """基于导入试卷的评分请求：维度与满分随试题动态变化。"""
+
+    candidate: CandidateInfo = Field(default_factory=CandidateInfo)
+    items: List[CustomQAItem] = Field(..., description="导入试卷各维度题目与回答")
+
+
 class Deduction(BaseModel):
     reason: str
     points: int

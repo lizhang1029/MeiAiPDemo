@@ -14,17 +14,21 @@ Web UI: GET /
 """
 from __future__ import annotations
 
+import json
 import os
 from typing import Dict, Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Body, FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, PlainTextResponse
 
 from .core.knowledge_base import KnowledgeBase
+from .core.paper_import import build_rubric, parse_exam_paper
 from .core.question_bank import get_paper, list_positions
 from .core.rubric import rubric_to_dict
-from .core.schemas import ScoreRequest, ScoreResult
+from .core.schemas import CustomScoreRequest, ScoreRequest, ScoreResult
 from .core.scoring_engine import ScoringEngine
+
+_EXAMPLES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "examples")
 
 app = FastAPI(
     title="AI 辅助导游面试评分系统 Demo",
@@ -60,6 +64,51 @@ def get_position_paper(position_id: str, variant: int = 0) -> Dict[str, Any]:
     if not paper:
         raise HTTPException(status_code=404, detail="未找到该岗位")
     return {"position": position_id, "variant": variant, "paper": paper}
+
+
+@app.get("/papers/samples")
+def get_paper_samples() -> Dict[str, Any]:
+    """返回内置的考务接口试题样例（普通话 / 越南语）。"""
+    samples: Dict[str, Any] = {}
+    for key, fname in (("zh", "sample_paper_zh.json"), ("vi", "sample_paper_vi.json")):
+        path = os.path.join(_EXAMPLES_DIR, fname)
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                samples[key] = json.load(f)
+    return {"samples": samples}
+
+
+@app.post("/papers/import")
+def import_paper(
+    paper: Dict[str, Any] = Body(..., description="考务接口下发的试题 JSON"),
+    pick: str = "first",
+    seed: int | None = None,
+) -> Dict[str, Any]:
+    """解析考务接口下发的试题 JSON，返回评分用动态试卷（维度/题目/分值）。"""
+    if not paper.get("sections"):
+        raise HTTPException(status_code=400, detail="试题 JSON 缺少 sections")
+    parsed = parse_exam_paper(paper, pick=pick, seed=seed)
+    if not parsed["dimensions"]:
+        raise HTTPException(status_code=400, detail="未从试题中解析出任何维度")
+    return parsed
+
+
+@app.post("/interviews/custom", response_model=ScoreResult)
+def create_interview_custom(req: CustomScoreRequest) -> Any:
+    """基于导入试卷评分：维度与满分随接口下发的试题动态变化。"""
+    if not req.items:
+        raise HTTPException(status_code=400, detail="items 不能为空")
+    dim_specs = [i.model_dump() for i in req.items]
+    rubric = build_rubric(dim_specs)
+    total_max = sum(int(i.max_score) for i in req.items)
+    result = engine.score_interview(
+        req.candidate.model_dump(),
+        dim_specs,
+        rubric=rubric,
+        total_max=total_max,
+    )
+    _STORE[result["interview_id"]] = result
+    return result
 
 
 @app.get("/kb/search")

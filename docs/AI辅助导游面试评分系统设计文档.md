@@ -104,6 +104,51 @@ graph TD
 
 接口：`GET /positions` 取岗位列表，`GET /positions/{id}/paper?variant=n` 生成某套试卷（每维度一题）。
 
+#### 1.5.1 试题导入（对接考务接口下发的 JSON）
+
+真实场景中，试题由考务平台（ezinterview 格式）通过接口下发，结构为 `sections → groups → items`：每个 `group` 是一个评分维度，`items` 为候选题目，`selection` 指定抽题规则（`random`/`manual` 抽 N 题），复合题（`type=mq-lr`）下还含 `content.items` 多道小题；题干 `stem` 为 HTML，可能是纯文本（`item_content_text`）、图文（`item_content_title` + `item_content_detail` 含 `<img>`）或纯图片（`item_content_image`）。
+
+```mermaid
+flowchart LR
+    A[考务接口下发试题 JSON] --> B[parse_exam_paper]
+    B --> C{group 名映射维度}
+    C --> D[selection 抽题: random/manual]
+    D --> E{复合题 mq-lr?}
+    E -- 是 --> F[再抽取一道小题]
+    E -- 否 --> G[取该题]
+    F & G --> H[抽取题干文本 + 图片URL]
+    H --> I[以实际作答题分值为该维度满分]
+    I --> J[动态试卷 dimensions]
+    J --> K[build_rubric 动态 Rubric]
+    K --> L[评分引擎 score_interview]
+```
+
+设计要点：
+
+- **维度映射**：按 `group.name` 映射到内部维度 key 与模态，例：专题路线讲解→`route_explanation`(content)、旅游景区讲解→`scenic_explanation`(content)、服务规范问答→`service_qa`(qa)、应变能力问答→`contingency_qa`(qa)、综合知识问答→`knowledge_qa`(qa)、**中译外→`translation_out`、外译中→`translation_in`**(translation)。未识别的 group 兜底为通用问答维度。
+- **动态满分**：考生每个 group 实际只作答一题（复合题再抽一小题），故以**所抽题目的 `point`** 作为该维度满分，而非 group/试卷的题库总分。示例：普通话卷专题路线 35、景区 35、其余各 10，合计 **100**；越南语卷专题 30、景区 30、服务 10、应变 5、综合 5、中译外 10、外译中 10，合计 **100**。
+- **题干解析**：去 HTML 标签取纯文本；图片题保留 `<img src>` URL（前端可点开查看，生产可接 OCR/人工录入），无文本时标记「图片题，需 OCR / 人工录入」。
+- **维度与满分随试题动态变化**：不再固定 7 维，而由导入试卷决定；`build_rubric` 据此构造带比例等级（优秀≥85%/良好≥70%/合格≥60%）的临时 Rubric。
+
+接口：`POST /papers/import`（body 为试题 JSON，`?pick=first|random`）返回动态试卷；`POST /interviews/custom` 基于动态试卷评分；`GET /papers/samples` 返回内置普通话/越南语样例。
+
+动态试卷数据结构（`POST /papers/import` 响应，节选）：
+
+```json
+{
+  "paper_name": "03.越南语", "language": "vi", "total_max": 100,
+  "dimensions": [
+    {"dimension_key": "route_explanation", "dimension_name": "专题路线讲解",
+     "modality": "content", "max_score": 30,
+     "question": "专题：民族广西　线路一：三月三风情之旅",
+     "images": ["https://.../03YNY_2-0-0-2_0.jpg"], "item_id": "1-1-2-1I..."},
+    {"dimension_key": "translation_out", "dimension_name": "中译外",
+     "modality": "translation", "max_score": 10,
+     "question": "在未来的三天时间里，将由我为大家提供服务。", "images": []}
+  ]
+}
+```
+
 ### 1.6 评分取整规则
 
 - 模型/引擎对每个维度输出整数分；扣分值同样取整。
@@ -661,6 +706,8 @@ erDiagram
 | --- | --- | --- |
 | GET | `/api/v1/positions` | 岗位列表 |
 | GET | `/api/v1/positions/{id}/paper?variant=` | 按岗位生成试卷（每位考生题目可不同）|
+| POST | `/api/v1/papers/import?pick=` | 解析考务接口下发的试题 JSON → 动态试卷 |
+| POST | `/api/v1/interviews/custom` | 基于导入试卷评分（维度/满分随试题动态）|
 | POST | `/api/v1/interviews` | 创建面试（含岗位）|
 | POST | `/api/v1/interviews/{id}/video` | 上传视频（离线）|
 | POST | `/api/v1/interviews/{id}/transcribe` | 实时/触发转写 |

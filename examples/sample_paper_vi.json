@@ -1,0 +1,186 @@
+{
+    "id": "cuizhengtao2511251421324233",
+    "name": "03.越南语",
+    "mode": "template",
+    "form_type": "exam",
+    "timer": { "time_limit": 0, "time_min_limit": 0 },
+    "section_shuffle": false,
+    "sections": [
+        {
+            "id": "1cuizhengtao2511251421324233",
+            "name": "答题单元（越南语）",
+            "section_type": "exam",
+            "timer": { "time_limit": 2520, "time_min_limit": 0, "time_remind": 300, "time_remind_prompt": "还剩余5分钟，请抓紧时间答题！" },
+            "group_shuffle": false,
+            "groups": [
+                {
+                    "id": "1-1cuizhengtao2511251421324233",
+                    "point": 90.0,
+                    "name": "专题路线讲解",
+                    "description": "（共 {item_length} 题，共 {group_score} 分。）",
+                    "item_shuffle": false,
+                    "items": [
+                        {
+                            "id": "1-1-2I2511251421324233",
+                            "name": "[外语_251128_专题路线讲解_004-006][C]`1",
+                            "indexstr": "4-6",
+                            "point": 90.0,
+                            "type": "mq-lr",
+                            "content": {
+                                "item_shuffle": false,
+                                "items": [
+                                    {
+                                        "id": "1-1-2-1I2511251421324233",
+                                        "name": "[外语_251128_专题路线讲解_004-006][C]`1-1",
+                                        "index": "4",
+                                        "point": 30.0,
+                                        "type": "sa",
+                                        "content": {
+                                            "stem": "<div class=\"item_content_title\">线路一：三月三风情之旅</div><div class=\"item_content_detail\"><img src=\"https://ezt-cdn.ezinterview.org.cn/ezinterview/media/paper/3ba25d86-9e1b-4020-a963-33f513da9092/pkg-260fbc950cbfe98f165416eddcb92f37/resource/03YNY_2-0-0-2_0.jpg\" /></div>"
+                                        },
+                                        "editor": { "toolbar": "copy cut paste formula table forecolor backcolor matrix bold italic underline strikethrough aligncenter alignjustify alignleft alignright fontsize" }
+                                    }
+                                ],
+                                "main_stem": "　　专题：民族广西",
+                                "layout": "lr",
+                                "sub_items_layout": "list",
+                                "split_position": [50, 50],
+                                "allow_split": false
+                            },
+                            "display_IM": true,
+                            "annotatable": true,
+                            "highlightable": true,
+                            "selection": { "title": "考生手动抽1题。", "manual": 1 }
+                        }
+                    ],
+                    "selection": { "title": "自动抽取 1 题（复合题）。", "rules": [ { "rule": "random", "number": 1 } ] }
+                },
+                {
+                    "id": "1-2cuizhengtao2511251421324233",
+                    "point": 30.0,
+                    "name": "旅游景区讲解",
+                    "description": "（共 {item_length} 题，共 {group_score} 分。）",
+                    "item_shuffle": false,
+                    "items": [
+                        {
+                            "id": "1-2-1I2511251421324233",
+                            "name": "[外语_251128_旅游景区讲解_001][C]",
+                            "index": "16",
+                            "point": 30.0,
+                            "type": "sa",
+                            "content": {
+                                "stem": "<div class=\"item_content_title\">南宁市青秀山旅游区</div><div class=\"item_content_detail\"><img src=\"https://ezt-cdn.ezinterview.org.cn/ezinterview/media/paper/3ba25d86-9e1b-4020-a963-33f513da9092/pkg-260fbc950cbfe98f165416eddcb92f37/resource/03YNY_2-0-1-1_0.jpg\" /></div>"
+                            },
+                            "editor": { "toolbar": "copy cut paste formula table forecolor backcolor matrix bold italic underline strikethrough aligncenter alignjustify alignleft alignright fontsize" },
+                            "display_IM": true
+                        }
+                    ],
+                    "selection": { "title": "自动抽取 1 题。", "rules": [ { "rule": "random", "number": 1 } ] }
+                },
+                {
+                    "id": "1-3cuizhengtao2511251421324233",
+                    "point": 10.0,
+                    "name": "服务规范问答",
+                    "description": "（共 {item_length} 题，共 {group_score} 分。）",
+                    "item_shuffle": false,
+                    "items": [
+                        {
+                            "id": "1-3-8I2511251421324233",
+                            "name": "[越南语_251128_服务规范问答_008][C]",
+                            "index": "28",
+                            "point": 10.0,
+                            "type": "sa",
+                            "content": { "stem": "<div class=\"item_content_image\"><img src=\"https://ezt-cdn.ezinterview.org.cn/ezinterview/media/paper/3ba25d86-9e1b-4020-a963-33f513da9092/pkg-260fbc950cbfe98f165416eddcb92f37/resource/03YNY_2-0-2-8_1.png\" /></div>" },
+                            "editor": { "toolbar": "copy cut paste formula table forecolor backcolor matrix bold italic underline strikethrough aligncenter alignjustify alignleft alignright fontsize" },
+                            "display_IM": true
+                        }
+                    ],
+                    "selection": { "title": "自动抽取 1 题。", "rules": [ { "rule": "random", "number": 1 } ] }
+                },
+                {
+                    "id": "1-4cuizhengtao2511251421324233",
+                    "point": 5.0,
+                    "name": "应变能力问答",
+                    "description": "（共 {item_length} 题，共 {group_score} 分。）",
+                    "item_shuffle": false,
+                    "items": [
+                        {
+                            "id": "1-4-12I2511251421324233",
+                            "name": "[越南语_251128_应变能力问答_012][C]",
+                            "index": "45",
+                            "point": 5.0,
+                            "type": "sa",
+                            "content": { "stem": "<div class=\"item_content_image\"><img src=\"https://ezt-cdn.ezinterview.org.cn/ezinterview/media/paper/3ba25d86-9e1b-4020-a963-33f513da9092/pkg-260fbc950cbfe98f165416eddcb92f37/resource/03YNY_2-0-3-12_1.png\" /></div>" },
+                            "editor": { "toolbar": "copy cut paste formula table forecolor backcolor matrix bold italic underline strikethrough aligncenter alignjustify alignleft alignright fontsize" },
+                            "display_IM": true
+                        }
+                    ],
+                    "selection": { "title": "自动抽取 1 题。", "rules": [ { "rule": "random", "number": 1 } ] }
+                },
+                {
+                    "id": "1-5cuizhengtao2511251421324233",
+                    "point": 5.0,
+                    "name": "综合知识问答",
+                    "description": "（共 {item_length} 题，共 {group_score} 分。）",
+                    "item_shuffle": false,
+                    "items": [
+                        {
+                            "id": "1-5-6I2511251421324233",
+                            "name": "[越南语_251128_综合知识问答_006][C]",
+                            "index": "52",
+                            "point": 5.0,
+                            "type": "sa",
+                            "content": { "stem": "<div class=\"item_content_image\"><img src=\"https://ezt-cdn.ezinterview.org.cn/ezinterview/media/paper/3ba25d86-9e1b-4020-a963-33f513da9092/pkg-260fbc950cbfe98f165416eddcb92f37/resource/03YNY_2-0-4-6_1.png\" /></div>" },
+                            "editor": { "toolbar": "copy cut paste formula table forecolor backcolor matrix bold italic underline strikethrough aligncenter alignjustify alignleft alignright fontsize" },
+                            "display_IM": true
+                        }
+                    ],
+                    "selection": { "title": "自动抽取 1 题。", "rules": [ { "rule": "random", "number": 1 } ] }
+                },
+                {
+                    "id": "1-6cuizhengtao2511251421324233",
+                    "point": 10.0,
+                    "name": "中译外",
+                    "description": "（共 {item_length} 题，共 {group_score} 分。）",
+                    "item_shuffle": false,
+                    "items": [
+                        {
+                            "id": "1-6-3I2511251421324233",
+                            "name": "[越南语_251128_中译外_003][C]",
+                            "index": "63",
+                            "point": 10.0,
+                            "type": "sa",
+                            "content": { "stem": "<div class=\"item_content_text\">在未来的三天时间里，将由我为大家提供服务。</div>" },
+                            "editor": { "toolbar": "copy cut paste formula table forecolor backcolor matrix bold italic underline strikethrough aligncenter alignjustify alignleft alignright fontsize" },
+                            "display_IM": true
+                        }
+                    ],
+                    "selection": { "title": "自动抽取 1 题。", "rules": [ { "rule": "random", "number": 1 } ] }
+                },
+                {
+                    "id": "1-7cuizhengtao2511251421324233",
+                    "point": 10.0,
+                    "name": "外译中",
+                    "description": "（共 {item_length} 题，共 {group_score} 分。）",
+                    "item_shuffle": false,
+                    "items": [
+                        {
+                            "id": "1-7-20I2511251421324233",
+                            "name": "[越南语_251128_外译中_020][C]",
+                            "index": "100",
+                            "point": 10.0,
+                            "type": "sa",
+                            "content": { "stem": "<div class=\"item_content_image\"><img src=\"https://ezt-cdn.ezinterview.org.cn/ezinterview/media/paper/3ba25d86-9e1b-4020-a963-33f513da9092/pkg-260fbc950cbfe98f165416eddcb92f37/resource/03YNY_2-0-6-20_0.png\" /></div>" },
+                            "editor": { "toolbar": "copy cut paste formula table forecolor backcolor matrix bold italic underline strikethrough aligncenter alignjustify alignleft alignright fontsize" },
+                            "display_IM": true
+                        }
+                    ],
+                    "selection": { "title": "自动抽取 1 题。", "rules": [ { "rule": "random", "number": 1 } ] }
+                }
+            ],
+            "calculator": false,
+            "point": 160.0
+        }
+    ],
+    "point": 160.0
+}

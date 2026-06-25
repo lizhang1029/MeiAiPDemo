@@ -1,14 +1,20 @@
 """命令行 demo：直接调用评分引擎对一份样例面试进行评分并打印报告。
 
 用法:
-    python -m examples.run_cli          # mock 模式
+    python -m examples.run_cli                 # 岗位题库 mock 评分
+    python -m examples.run_cli --import-paper  # 演示「接口下发试题 JSON」导入评分
     DASHSCOPE_API_KEY=sk-xxx python -m examples.run_cli   # 接入百炼
 """
 from __future__ import annotations
 
 import json
+import os
+import sys
 
+from app.core.paper_import import build_rubric, parse_exam_paper
 from app.core.scoring_engine import ScoringEngine
+
+_HERE = os.path.dirname(__file__)
 
 # 回答转写故意包含「考官：」读题行，演示自动剔除考官读题
 SAMPLE_ITEMS = [
@@ -58,14 +64,45 @@ SAMPLE_ITEMS = [
 ]
 
 
-def main() -> None:
-    engine = ScoringEngine()
-    print(f"== 评分引擎模式: {engine.mode} ==\n")
+def run_bank(engine: ScoringEngine) -> None:
+    """岗位题库评分（内置 7 维 Rubric）。"""
     result = engine.score_interview(
         {"name": "张三", "candidate_no": "GX2026-001", "position": "guide_zh"},
         SAMPLE_ITEMS,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def run_import(engine: ScoringEngine, sample: str = "sample_paper_vi.json") -> None:
+    """演示「接口下发试题 JSON」：解析试题 → 动态维度评分。"""
+    data = json.load(open(os.path.join(_HERE, sample), encoding="utf-8"))
+    paper = parse_exam_paper(data)
+    print(f"== 导入试卷: {paper['paper_name']} | 维度 {len(paper['dimensions'])} | 满分 {paper['total_max']} ==")
+    items = [
+        {
+            **dim,
+            "answer_transcript": "考官：" + dim["question"]
+            + "\n考生：各位游客大家好，我是导游，首先介绍广西漓江山水，其次讲解壮族三月三非遗文化，最后提示安全注意事项，内容完整、逻辑清晰。",
+        }
+        for dim in paper["dimensions"]
+    ]
+    rubric = build_rubric(paper["dimensions"])
+    result = engine.score_interview(
+        {"name": "李四", "candidate_no": "GX-VI-001", "position": paper["paper_name"]},
+        items,
+        rubric=rubric,
+        total_max=paper["total_max"],
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def main() -> None:
+    engine = ScoringEngine()
+    print(f"== 评分引擎模式: {engine.mode} ==\n")
+    if "--import-paper" in sys.argv:
+        run_import(engine)
+    else:
+        run_bank(engine)
 
 
 if __name__ == "__main__":

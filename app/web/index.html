@@ -21,6 +21,8 @@
     .dim-block .t { font-size:13px; color:var(--accent); margin-bottom:6px; }
     button { background:var(--accent); color:#06283a; border:none; border-radius:8px; padding:10px 18px; font-weight:600; cursor:pointer; font-size:14px; }
     button.ghost { background:transparent; color:var(--accent); border:1px solid var(--accent); }
+    button.tab { background:transparent; color:var(--muted); border:1px solid #334155; padding:7px 14px; font-size:13px; }
+    button.tab.active { color:#06283a; background:var(--accent); border-color:var(--accent); }
     .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
     .total { font-size:34px; font-weight:700; }
     .total small { font-size:14px; color:var(--muted); }
@@ -34,9 +36,10 @@
     .ded { font-size:12px; color:#fca5a5; margin-top:4px; }
     .ev { font-size:12px; color:#7dd3fc; margin-top:2px; }
     .rm { font-size:12px; color:#fdba74; margin-top:2px; }
+    .img { font-size:12px; color:#a5b4fc; margin-top:2px; }
     .empty { color:var(--muted); font-size:13px; }
     a { color:var(--accent); }
-    .hint { font-size:11px; color:var(--muted); margin:2px 0 0; }
+    .hint { font-size:11px; color:var(--muted); margin:4px 0 0; }
   </style>
 </head>
 <body>
@@ -47,13 +50,36 @@
 
   <div class="layout">
     <div class="card">
-      <h2>① 选择岗位 · 录入题目与回答</h2>
+      <h2>① 试题来源 · 录入题目与回答</h2>
       <div class="row">
-        <div style="flex:1"><label>报考岗位</label><select id="position"></select></div>
         <div style="flex:1"><label>考生姓名</label><input id="name" value="张三" /></div>
         <div style="flex:1"><label>考号</label><input id="no" value="GX2026-001" /></div>
       </div>
-      <p class="hint">切换岗位会自动载入对应题目（每位考生题目可不同）。回答转写中以「考官：」开头的读题行会被自动剔除，仅对考生回答评分。</p>
+
+      <label>试题来源</label>
+      <div class="row">
+        <button class="tab active" id="srcBank">岗位题库</button>
+        <button class="tab" id="srcImport">导入试题 JSON（接口）</button>
+      </div>
+
+      <div id="bankPanel">
+        <label>报考岗位</label>
+        <select id="position"></select>
+        <p class="hint">切换岗位会自动载入对应题目（每位考生题目可不同）。</p>
+      </div>
+
+      <div id="importPanel" style="display:none">
+        <label>试题 JSON（考务接口下发，结构 sections → groups → items）</label>
+        <textarea id="paperJson" style="min-height:120px" placeholder="粘贴接口返回的试题 JSON，或点下方按钮载入样例..."></textarea>
+        <div class="row" style="margin-top:8px">
+          <button class="ghost" id="loadZh">载入普通话样例</button>
+          <button class="ghost" id="loadVi">载入越南语样例</button>
+          <button id="parsePaper">解析试题</button>
+        </div>
+        <p class="hint" id="paperInfo">支持复合题（手动抽题）、纯文本题与图片题；维度与满分按实际作答题目自动生成。</p>
+      </div>
+
+      <p class="hint">回答转写中以「考官：」开头的读题行会被自动剔除，仅对考生回答评分；所有分数为整数。</p>
       <div id="dims"></div>
       <div class="row" style="margin-top:8px">
         <button id="run">开始 AI 评分</button>
@@ -69,14 +95,20 @@
 
 <script>
 let RUBRIC = null;
+let MODE = 'bank';            // bank | import
+let IMPORTED = null;          // 解析后的导入试卷
+let SAMPLES = null;           // 内置样例缓存
+let CURRENT_SPECS = [];       // 当前渲染的维度规格，用于评分时回填 max_score/modality
 // 示例回答：故意加入「考官：」读题行，演示自动剔除
 const SAMPLE = {
   language_expression: "考官：请用一段话欢迎来自全国各地的游客，并介绍今天的行程安排。\n考生：各位游客大家好，我是导游张三，非常高兴为大家服务。今天我们将用清晰流畅的普通话，首先游览漓江，其次参观象鼻山，最后体验壮族民俗，祝大家旅途愉快。",
-  route_explanation: "考官：请设计并讲解一条'桂林山水'两日精华专题线路。\n考生：本次专题线路以漓江山水为主题。首先从象鼻山出发，它是桂林城徽；其次乘船游览漓江百里画廊，欣赏九马画山；最后到达兴安灵渠，感受秦代水利智慧，整条线路串联自然与历史文化。",
-  scenic_explanation: "考官：请现场讲解象鼻山景区，突出其特色与文化内涵。\n考生：象鼻山位于漓江与桃花江汇流处，因山形似巨象临江饮水而得名。我们沿江边动线讲解，先观全景，再看水月洞，最后讲述象山传说，传递桂林山水文化的独特价值。",
+  route_explanation: "考官：请设计并讲解一条专题线路。\n考生：本次专题线路以漓江山水为主题。首先从象鼻山出发，它是桂林城徽；其次乘船游览漓江百里画廊，欣赏九马画山；最后到达兴安灵渠，感受秦代水利智慧，整条线路串联自然与历史文化。",
+  scenic_explanation: "考官：请现场讲解该景区，突出其特色与文化内涵。\n考生：象鼻山位于漓江与桃花江汇流处，因山形似巨象临江饮水而得名。我们沿江边动线讲解，先观全景，再看水月洞，最后讲述象山传说，传递桂林山水文化的独特价值。",
   service_qa: "考官：请简述标准导游服务流程及全程应遵守的服务规范。\n考生：导游服务流程包括接团准备、首站接待、行程讲解、安全提示和送团总结。全程要主动告知、规范礼仪，依据导游管理条例，不得擅自改变行程或诱导购物，始终把游客安全放在首位。",
-  contingency_qa: "考官：行程途中一名游客突发疾病，你将如何处置？\n考生：我会立即停止行程，拨打120，保护现场并安抚其他游客，同时上报旅行社，确保人身安全优先，方案合法合规、切实可行。",
-  knowledge_qa: "考官：请介绍广西的世界遗产与国家级非物质文化遗产代表。\n考生：广西是中国唯一沿海的少数民族自治区，壮族三月三是国家级非遗，灵渠是世界灌溉工程遗产，刘三姐歌谣也是国家级非遗，湘江战役纪念馆是重要红色教育基地。",
+  contingency_qa: "考官：行程途中遇到突发情况，你将如何处置？\n考生：我会立即停止行程，拨打120，保护现场并安抚其他游客，同时上报旅行社，确保人身安全优先，方案合法合规、切实可行。",
+  knowledge_qa: "考官：请介绍广西的代表性文化或物产。\n考生：广西是中国唯一沿海的少数民族自治区，壮族三月三是国家级非遗，灵渠是世界灌溉工程遗产，刘三姐歌谣也是国家级非遗，沙田柚、百色芒果等是国家地理标志产品。",
+  translation_out: "考官：在未来的三天时间里，将由我为大家提供服务。\n考生：Trong ba ngày tới, tôi sẽ là hướng dẫn viên phục vụ quý khách, chúc quý khách có chuyến đi vui vẻ.",
+  translation_in: "考官：请将下列外语内容翻译为中文。\n考生：女士们先生们，欢迎来到广西，祝大家旅途愉快、身体健康。",
 };
 
 async function init(){
@@ -86,32 +118,75 @@ async function init(){
   const pos = await (await fetch('/positions')).json();
   const sel = document.getElementById('position');
   sel.innerHTML = pos.positions.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-  sel.onchange = loadPaper;
-  renderDims();
-  await loadPaper();
+  sel.onchange = loadBankPaper;
+  switchMode('bank');
 }
 
-function renderDims(){
+function normFromRubric(){
+  return RUBRIC.dimensions.map(d => ({ key:d.key, name:d.name, max_score:d.max_score, modality:d.modality, question:'', images:[] }));
+}
+function normFromImported(){
+  return IMPORTED.dimensions.map(d => ({ key:d.dimension_key, name:d.dimension_name, max_score:d.max_score, modality:d.modality, question:d.question, images:d.images||[] }));
+}
+
+function renderDims(specs){
+  CURRENT_SPECS = specs;
   const box = document.getElementById('dims');
   box.innerHTML = '';
-  RUBRIC.dimensions.forEach(d => {
+  if (!specs.length){ box.innerHTML = '<div class="empty">请先选择岗位或导入并解析试题。</div>'; return; }
+  specs.forEach(d => {
+    const imgs = (d.images||[]).map((u,i)=>`<a class="img" href="${u}" target="_blank">🖼 题目图片${(d.images.length>1)?(' '+(i+1)):''}</a>`).join(' ');
     const div = document.createElement('div');
     div.className = 'dim-block';
     div.innerHTML = `<div class="t">${d.name} · 满分${d.max_score}（${d.modality}）</div>
-      <label>题目</label><input data-q="${d.key}" placeholder="该岗位下【${d.name}】题目" />
+      <label>题目</label><input data-q="${d.key}" placeholder="【${d.name}】题目" value="${(d.question||'').replace(/"/g,'&quot;')}" />
+      ${imgs?`<div style="margin-top:6px">${imgs}</div>`:''}
       <label>回答转写（可含「考官：」读题行）</label>
       <textarea data-key="${d.key}" placeholder="输入候选人在【${d.name}】的回答/讲解转写..."></textarea>`;
     box.appendChild(div);
   });
 }
 
-async function loadPaper(){
+async function loadBankPaper(){
   const pid = document.getElementById('position').value;
   const data = await (await fetch(`/positions/${pid}/paper`)).json();
   (data.paper||[]).forEach(item => {
     const q = document.querySelector(`input[data-q="${item.dimension_key}"]`);
     if (q) q.value = item.question || '';
   });
+}
+
+function switchMode(m){
+  MODE = m;
+  document.getElementById('srcBank').classList.toggle('active', m==='bank');
+  document.getElementById('srcImport').classList.toggle('active', m==='import');
+  document.getElementById('bankPanel').style.display = m==='bank' ? '' : 'none';
+  document.getElementById('importPanel').style.display = m==='import' ? '' : 'none';
+  if (m==='bank'){ renderDims(normFromRubric()); loadBankPaper(); }
+  else { renderDims(IMPORTED ? normFromImported() : []); }
+}
+
+async function ensureSamples(){
+  if (!SAMPLES) SAMPLES = (await (await fetch('/papers/samples')).json()).samples;
+  return SAMPLES;
+}
+async function loadSample(key){
+  const s = await ensureSamples();
+  if (!s[key]){ alert('未找到样例'); return; }
+  document.getElementById('paperJson').value = JSON.stringify(s[key], null, 2);
+}
+
+async function parsePaper(){
+  const txt = document.getElementById('paperJson').value.trim();
+  if (!txt){ alert('请先粘贴或载入试题 JSON'); return; }
+  let data;
+  try { data = JSON.parse(txt); } catch(e){ alert('JSON 解析失败：' + e.message); return; }
+  const r = await fetch('/papers/import', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)});
+  if (!r.ok){ const e = await r.json().catch(()=>({})); alert('导入失败：' + (e.detail || r.status)); return; }
+  IMPORTED = await r.json();
+  document.getElementById('paperInfo').textContent =
+    `已解析：${IMPORTED.paper_name}（${IMPORTED.language}）· 共 ${IMPORTED.dimensions.length} 个维度 · 满分合计 ${IMPORTED.total_max}`;
+  renderDims(normFromImported());
 }
 
 function levelClass(ratio){ return ratio>=0.85?'b-good':ratio>=0.6?'b-mid':'b-bad'; }
@@ -124,17 +199,27 @@ function fillDemo(){
 }
 
 async function run(){
+  const specByKey = {};
+  CURRENT_SPECS.forEach(s => specByKey[s.key] = s);
   const items = [];
   document.querySelectorAll('#dims textarea').forEach(t => {
     const k = t.getAttribute('data-key');
     const q = document.querySelector(`input[data-q="${k}"]`);
-    items.push({ dimension_key: k, question: q ? q.value.trim() : '',
-                 answer_transcript: t.value.trim() });
+    const base = { dimension_key: k, question: q ? q.value.trim() : '', answer_transcript: t.value.trim() };
+    if (MODE === 'import'){
+      const s = specByKey[k] || {};
+      base.dimension_name = s.name || k;
+      base.modality = s.modality || 'qa';
+      base.max_score = s.max_score || 10;
+    }
+    items.push(base);
   });
-  const body = { candidate: { name: name.value, candidate_no: no.value, position: document.getElementById('position').value }, items };
+  if (!items.length){ alert('没有可评分的维度'); return; }
+  const candidate = { name: name.value, candidate_no: no.value, position: MODE==='bank' ? document.getElementById('position').value : (IMPORTED ? IMPORTED.paper_name : 'imported') };
+  const url = MODE === 'import' ? '/interviews/custom' : '/interviews';
   const res = document.getElementById('result');
   res.innerHTML = '<div class="empty">AI 评分中…</div>';
-  const r = await (await fetch('/interviews', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})).json();
+  const r = await (await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({candidate, items})})).json();
   render(r);
 }
 
@@ -163,6 +248,11 @@ function render(r){
 
 document.getElementById('run').onclick = run;
 document.getElementById('demo').onclick = fillDemo;
+document.getElementById('srcBank').onclick = () => switchMode('bank');
+document.getElementById('srcImport').onclick = () => switchMode('import');
+document.getElementById('loadZh').onclick = () => loadSample('zh');
+document.getElementById('loadVi').onclick = () => loadSample('vi');
+document.getElementById('parsePaper').onclick = parsePaper;
 init();
 </script>
 </body>

@@ -1,0 +1,146 @@
+{
+    "id": "cuizhengtao2511251421322711",
+    "name": "01.普通话",
+    "mode": "template",
+    "form_type": "exam",
+    "timer": { "time_limit": 0, "time_min_limit": 0 },
+    "section_shuffle": false,
+    "sections": [
+        {
+            "id": "1cuizhengtao2511251421322711",
+            "name": "答题单元（普通话）",
+            "section_type": "exam",
+            "timer": { "time_limit": 1920, "time_min_limit": 0, "time_remind": 300, "time_remind_prompt": "还剩余5分钟，请抓紧时间答题！" },
+            "group_shuffle": false,
+            "groups": [
+                {
+                    "id": "1-1cuizhengtao2511251421322711",
+                    "point": 105.0,
+                    "name": "专题路线讲解",
+                    "description": "（共 {item_length} 题，共 {group_score} 分。）",
+                    "item_shuffle": false,
+                    "items": [
+                        {
+                            "id": "1-1-1I2511251421322711",
+                            "name": "[中文_251128_专题路线讲解_001-003][C]`1",
+                            "indexstr": "1-3",
+                            "point": 105.0,
+                            "type": "mq-lr",
+                            "content": {
+                                "item_shuffle": false,
+                                "items": [
+                                    {
+                                        "id": "1-1-1-1I2511251421322711",
+                                        "name": "[中文_251128_专题路线讲解_001-003][C]`1-1",
+                                        "index": "1",
+                                        "point": 35.0,
+                                        "type": "sa",
+                                        "content": {
+                                            "stem": "<div class=\"item_content_title\">线路一：历史文化名城之旅</div><div class=\"item_content_detail\"><img src=\"https://ezt-cdn.ezinterview.org.cn/ezinterview/media/paper/19730ca1-123f-44e4-863c-b0f19a16ab91/pkg-22fcadbe4c2ac047f4b92078a255e76c/resource/01PTH_0-0-0-1_0.jpg\" /></div>"
+                                        },
+                                        "editor": { "toolbar": "copy cut paste formula table forecolor backcolor matrix bold italic underline strikethrough aligncenter alignjustify alignleft alignright fontsize" }
+                                    }
+                                ],
+                                "main_stem": "　　专题：历史广西",
+                                "layout": "lr",
+                                "sub_items_layout": "list",
+                                "split_position": [50, 50],
+                                "allow_split": false
+                            },
+                            "display_IM": true,
+                            "annotatable": true,
+                            "highlightable": true,
+                            "selection": { "title": "考生手动抽1题。", "manual": 1 }
+                        }
+                    ],
+                    "selection": { "title": "自动抽取 1 题（复合题）。", "rules": [ { "rule": "random", "number": 1 } ] }
+                },
+                {
+                    "id": "1-2cuizhengtao2511251421322711",
+                    "point": 35.0,
+                    "name": "旅游景区讲解",
+                    "description": "（共 {item_length} 题，共 {group_score} 分。）",
+                    "item_shuffle": false,
+                    "items": [
+                        {
+                            "id": "1-2-3I2511251421322711",
+                            "name": "[中文_251128_旅游景区讲解_003][C]",
+                            "index": "24",
+                            "point": 35.0,
+                            "type": "sa",
+                            "content": {
+                                "stem": "<div class=\"item_content_title\">桂林漓江景区</div><div class=\"item_content_detail\"><img src=\"https://ezt-cdn.ezinterview.org.cn/ezinterview/media/paper/19730ca1-123f-44e4-863c-b0f19a16ab91/pkg-22fcadbe4c2ac047f4b92078a255e76c/resource/01PTH_0-0-1-3_0.jpg\" /></div>"
+                            },
+                            "editor": { "toolbar": "copy cut paste formula table forecolor backcolor matrix bold italic underline strikethrough aligncenter alignjustify alignleft alignright fontsize" },
+                            "display_IM": true
+                        }
+                    ],
+                    "selection": { "title": "自动抽取 1 题。", "rules": [ { "rule": "random", "number": 1 } ] }
+                },
+                {
+                    "id": "1-3cuizhengtao2511251421322711",
+                    "point": 10.0,
+                    "name": "服务规范问答",
+                    "description": "（共 {item_length} 题，共 {group_score} 分。）",
+                    "item_shuffle": false,
+                    "items": [
+                        {
+                            "id": "1-3-3I2511251421322711",
+                            "name": "[中文_251128_服务规范问答_003][C]",
+                            "index": "34",
+                            "point": 10.0,
+                            "type": "sa",
+                            "content": { "stem": "<div class=\"item_content_text\">地陪导游的准备工作中要准备哪些物品与资料？</div>" },
+                            "editor": { "toolbar": "copy cut paste formula table forecolor backcolor matrix bold italic underline strikethrough aligncenter alignjustify alignleft alignright fontsize" },
+                            "display_IM": true
+                        }
+                    ],
+                    "selection": { "title": "自动抽取 1 题。", "rules": [ { "rule": "random", "number": 1 } ] }
+                },
+                {
+                    "id": "1-4cuizhengtao2511251421322711",
+                    "point": 10.0,
+                    "name": "应变能力问答",
+                    "description": "（共 {item_length} 题，共 {group_score} 分。）",
+                    "item_shuffle": false,
+                    "items": [
+                        {
+                            "id": "1-4-8I2511251421322711",
+                            "name": "[中文_251128_应变能力问答_008][C]",
+                            "index": "52",
+                            "point": 10.0,
+                            "type": "sa",
+                            "content": { "stem": "<div class=\"item_content_text\">旅游者要求外出品尝风味餐时，地陪导游应如何处理？</div>" },
+                            "editor": { "toolbar": "copy cut paste formula table forecolor backcolor matrix bold italic underline strikethrough aligncenter alignjustify alignleft alignright fontsize" },
+                            "display_IM": true
+                        }
+                    ],
+                    "selection": { "title": "自动抽取 1 题。", "rules": [ { "rule": "random", "number": 1 } ] }
+                },
+                {
+                    "id": "1-5cuizhengtao2511251421322711",
+                    "point": 10.0,
+                    "name": "综合知识问答",
+                    "description": "（共 {item_length} 题，共 {group_score} 分。）",
+                    "item_shuffle": false,
+                    "items": [
+                        {
+                            "id": "1-5-3I2511251421322711",
+                            "name": "[中文_251128_综合知识问答_003][C]",
+                            "index": "60",
+                            "point": 10.0,
+                            "type": "sa",
+                            "content": { "stem": "<div class=\"item_content_text\">广西有哪几种获得国家地理标志产品的水果？（请列举三项以上）</div>" },
+                            "editor": { "toolbar": "copy cut paste formula table forecolor backcolor matrix bold italic underline strikethrough aligncenter alignjustify alignleft alignright fontsize" },
+                            "display_IM": true
+                        }
+                    ],
+                    "selection": { "title": "自动抽取 1 题。", "rules": [ { "rule": "random", "number": 1 } ] }
+                }
+            ],
+            "calculator": false,
+            "point": 170.0
+        }
+    ],
+    "point": 170.0
+}

@@ -2,3 +2,6 @@ fastapi==0.115.6
 uvicorn[standard]==0.34.0
 pydantic==2.10.4
 openai==1.59.6
+python-multipart==0.0.18
+# 可选：启用阿里百炼 Paraformer 语音识别（无则 /transcribe 自动降级 mock）
+dashscope==1.20.14

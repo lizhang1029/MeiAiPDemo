@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI 辅助导游面试评分系统 · Demo</title>
+  <style>
+    :root { --bg:#0f172a; --card:#1e293b; --accent:#38bdf8; --good:#22c55e; --warn:#f59e0b; --bad:#ef4444; --text:#e2e8f0; --muted:#94a3b8; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: -apple-system,"PingFang SC","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--text); }
+    header { padding:20px 28px; border-bottom:1px solid #334155; display:flex; align-items:center; justify-content:space-between; }
+    header h1 { font-size:18px; margin:0; }
+    .mode { font-size:12px; padding:3px 10px; border-radius:999px; background:#334155; color:var(--muted); }
+    .layout { display:grid; grid-template-columns: 1fr 1fr; gap:18px; padding:22px 28px; }
+    .card { background:var(--card); border:1px solid #334155; border-radius:12px; padding:18px; }
+    .card h2 { font-size:15px; margin:0 0 12px; color:var(--accent); }
+    label { display:block; font-size:12px; color:var(--muted); margin:10px 0 4px; }
+    input, textarea, select { width:100%; background:#0f172a; border:1px solid #334155; color:var(--text); border-radius:8px; padding:8px 10px; font-size:13px; }
+    textarea { resize:vertical; min-height:64px; }
+    .dim-block { border:1px dashed #334155; border-radius:10px; padding:12px; margin-bottom:12px; }
+    .dim-block .t { font-size:13px; color:var(--accent); margin-bottom:6px; }
+    button { background:var(--accent); color:#06283a; border:none; border-radius:8px; padding:10px 18px; font-weight:600; cursor:pointer; font-size:14px; }
+    button.ghost { background:transparent; color:var(--accent); border:1px solid var(--accent); }
+    .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .total { font-size:34px; font-weight:700; }
+    .total small { font-size:14px; color:var(--muted); }
+    .badge { font-size:12px; padding:2px 8px; border-radius:6px; }
+    .b-good{background:rgba(34,197,94,.15);color:var(--good);} .b-mid{background:rgba(245,158,11,.15);color:var(--warn);} .b-bad{background:rgba(239,68,68,.15);color:var(--bad);}
+    .dim-score { border-bottom:1px solid #283548; padding:12px 0; }
+    .dim-score .head { display:flex; justify-content:space-between; align-items:center; }
+    .bar { height:6px; background:#0f172a; border-radius:6px; overflow:hidden; margin:8px 0; }
+    .bar > i { display:block; height:100%; background:var(--accent); }
+    .small { font-size:12px; color:var(--muted); }
+    .ded { font-size:12px; color:#fca5a5; margin-top:4px; }
+    .ev { font-size:12px; color:#7dd3fc; margin-top:2px; }
+    .empty { color:var(--muted); font-size:13px; }
+    a { color:var(--accent); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🎤 AI 辅助导游面试评分系统 <span class="small">Demo</span></h1>
+    <span class="mode" id="mode">engine: …</span>
+  </header>
+
+  <div class="layout">
+    <div class="card">
+      <h2>① 录入面试题目与回答</h2>
+      <div class="row">
+        <div style="flex:1"><label>考生姓名</label><input id="name" value="张三" /></div>
+        <div style="flex:1"><label>考号</label><input id="no" value="GX2026-001" /></div>
+      </div>
+      <div id="dims"></div>
+      <div class="row" style="margin-top:8px">
+        <button id="run">开始 AI 评分</button>
+        <button class="ghost" id="demo">填充示例数据</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>② 评分结果与证据链</h2>
+      <div id="result"><div class="empty">提交后在此显示总分、分项分、扣分原因、引用证据与 AI 置信度。</div></div>
+    </div>
+  </div>
+
+<script>
+let RUBRIC = null;
+const SAMPLE = {
+  language_expression: "大家好，我是导游张三。今天非常高兴为各位服务。我会用清晰流畅的普通话，带大家领略广西的山水之美，希望大家旅途愉快。",
+  route_explanation: "本次专题线路以漓江山水为主题。首先我们从象鼻山出发，它是桂林城徽；其次乘船游览漓江百里画廊，欣赏九马画山；最后到达兴安灵渠，感受秦代水利智慧。整条线路串联自然与历史文化。",
+  scenic_explanation: "象鼻山位于漓江与桃花江汇流处，因山形似巨象临江饮水而得名。我们沿江边动线讲解，先观全景，再看水月洞，最后讲述象山的传说，传递桂林山水文化的独特价值。",
+  service_qa: "导游服务流程包括接团准备、首站接待、行程讲解、安全提示和送团总结。全程要主动告知、规范礼仪，依据导游管理条例，不得擅自改变行程或诱导购物，始终把游客安全放在首位。",
+  contingency_qa: "如遇游客突发疾病，我会立即停止行程，拨打120，保护现场并安抚其他游客，同时上报旅行社，确保人身安全优先，方案合法合规、切实可行。",
+  knowledge_qa: "广西是中国唯一沿海的少数民族自治区，壮族三月三是国家级非遗，以对歌抛绣球闻名；湘江战役纪念馆是重要红色教育基地；灵渠是世界灌溉工程遗产。",
+};
+
+async function loadRubric() {
+  const h = await (await fetch('/health')).json();
+  document.getElementById('mode').textContent = 'engine: ' + h.engine_mode;
+  RUBRIC = await (await fetch('/rubric')).json();
+  const box = document.getElementById('dims');
+  box.innerHTML = '';
+  RUBRIC.dimensions.forEach(d => {
+    const div = document.createElement('div');
+    div.className = 'dim-block';
+    div.innerHTML = `<div class="t">${d.name} · 满分${d.max_score}（${d.modality}）</div>
+      <textarea data-key="${d.key}" placeholder="输入候选人在【${d.name}】的回答/讲解转写..."></textarea>`;
+    box.appendChild(div);
+  });
+}
+
+function levelClass(ratio){ return ratio>=0.85?'b-good':ratio>=0.6?'b-mid':'b-bad'; }
+
+function fillDemo(){
+  document.querySelectorAll('#dims textarea').forEach(t => {
+    const k = t.getAttribute('data-key');
+    if (SAMPLE[k]) t.value = SAMPLE[k];
+  });
+}
+
+async function run(){
+  const items = [];
+  document.querySelectorAll('#dims textarea').forEach(t => {
+    items.push({ dimension_key: t.getAttribute('data-key'),
+                 question: '请展示你在该维度的表现',
+                 answer_transcript: t.value.trim() });
+  });
+  const body = { candidate: { name: name.value, candidate_no: no.value }, items };
+  const res = document.getElementById('result');
+  res.innerHTML = '<div class="empty">AI 评分中…</div>';
+  const r = await (await fetch('/interviews', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})).json();
+  render(r);
+}
+
+function render(r){
+  const res = document.getElementById('result');
+  const ratio = r.total_score / r.max_total;
+  let html = `<div class="row"><div class="total">${r.total_score}<small>/${r.max_total}</small></div>
+    <span class="badge ${levelClass(ratio)}">${r.overall_level}</span>
+    <span class="small">引擎: ${r.engine_mode}</span>
+    <a class="small" href="/interviews/${r.interview_id}/report" target="_blank">查看报告</a></div>`;
+  if (r.review && r.review.summary) html += `<p class="small">${r.review.summary}</p>`;
+  r.dimensions.forEach(d => {
+    const rt = d.score / d.max_score;
+    html += `<div class="dim-score"><div class="head"><b>${d.dimension_name}</b>
+      <span><span class="badge ${levelClass(rt)}">${d.level}</span> ${d.score}/${d.max_score} · 置信${d.confidence}</span></div>
+      <div class="bar"><i style="width:${rt*100}%"></i></div>
+      <div class="small">${d.rationale||''}</div>`;
+    (d.deductions||[]).forEach(x => html += `<div class="ded">− ${x.points}：${x.reason}<br><span class="small">证据: ${x.evidence||''}</span></div>`);
+    (d.evidence||[]).forEach(x => html += `<div class="ev">[${x.type}] ${x.content} <span class="small">${x.ref||''}</span></div>`);
+    html += `</div>`;
+  });
+  res.innerHTML = html;
+}
+
+document.getElementById('run').onclick = run;
+document.getElementById('demo').onclick = fillDemo;
+loadRubric();
+</script>
+</body>
+</html>

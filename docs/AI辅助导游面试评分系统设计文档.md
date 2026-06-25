@@ -68,6 +68,47 @@ graph TD
 - 实时评分（流式）与离线评分（录像回放）双模式。
 - AI 输出：总分 / 分项分 / 扣分项 / 扣分原因 / 评分依据 / 引用证据 / 置信度。
 - 每个分数可追溯：评分项 → 证据 → 转写内容 → 视频片段。
+- **岗位 + 题库**：按岗位维护题库，每位考生可抽取不同题目；面试前选择岗位即生成对应试卷。
+- **分数取整**：总分、分项分、扣分值一律为整数，不出现小数（评分易读、便于复核与汇总）。
+- **剔除考官读题**：考官朗读题目的语音不计入考生评分，转写阶段自动识别并剔除。
+
+### 1.5 岗位与题库设计
+
+不同考生题目不同，按岗位维护题库；每个评分维度可配置多套候选题目，由抽题策略为考生分配。
+
+```mermaid
+graph TD
+    P[岗位 Position] --> Q[维度题库 Question Bank]
+    Q --> V1[题目套 variant 0]
+    Q --> V2[题目套 variant 1]
+    V1 & V2 --> Paper[考生试卷 Paper: 每维度一题]
+    Paper --> Score[评分引擎按题评分]
+```
+
+题库数据结构（JSON 示例）：
+
+```json
+{
+  "position_id": "guide_zh",
+  "name": "中文导游",
+  "language": "zh",
+  "questions": {
+    "route_explanation": [
+      "请设计并讲解一条'桂林山水'两日精华专题线路",
+      "请设计并讲解一条'广西民族风情'专题线路"
+    ],
+    "contingency_qa": ["行程途中一名游客突发疾病，你将如何处置？"]
+  }
+}
+```
+
+接口：`GET /positions` 取岗位列表，`GET /positions/{id}/paper?variant=n` 生成某套试卷（每维度一题）。
+
+### 1.6 评分取整规则
+
+- 模型/引擎对每个维度输出整数分；扣分值同样取整。
+- 校准约束：分数截断到 `[0, 维度满分]` 整数区间；分项之和与维度分一致；扣分之和 = 满分 − 得分。
+- 总分 = 各维度整数分之和，必为整数。
 
 ---
 
@@ -98,6 +139,28 @@ graph LR
 | 中英混说 | 启用 code-switching 词典 + 混合声学模型 |
 | 说话人分离 | pyannote / 阵列麦克风方位 |
 
+### 2.2 剔除考官读题
+
+面试中考官常朗读题目，这部分语音**不应计入考生评分**。系统在转写后、评分前做清洗：
+
+```mermaid
+graph LR
+    A[带说话人标注的转写] --> B{识别说话人角色}
+    B -->|考官/Examiner| R[剔除: examiner_label]
+    B -->|考生/Candidate| K[保留为考生回答]
+    B -->|无标注| C{与题目相似度?}
+    C -->|高 ≥阈值| R2[剔除: question_reading]
+    C -->|低| K
+    K --> OUT[仅含考生回答的文本]
+    R & R2 --> LOG[记录被剔除片段, 供复核展示]
+```
+
+双信号识别：
+1. **说话人标注**：行首「考官：」「主考官:」「Examiner:」等 → 判为考官内容。
+2. **题目相似度**：无标注时，与题目高度相似的行（字符包含度/Jaccard ≥ 阈值，默认 0.8）→ 判为读题。
+
+被剔除片段记录在 `removed_segments`（含 `reason`），随评分结果返回，供评委复核时透明展示；只有清洗后的考生回答进入评分 Prompt。实现见 `app/core/transcript.py`。生产环境结合**说话人分离 + 麦克风通道**可进一步提升准确率（考官与考生使用不同麦克风/座位方位）。
+
 ---
 
 ## 3. AI 评分引擎设计
@@ -124,8 +187,8 @@ graph TD
 ```json
 {
   "interview_id": "4cd469a11ab8",
-  "candidate": {"name": "张三", "candidate_no": "GX2026-001"},
-  "total_score": 78.5,
+  "candidate": {"name": "张三", "candidate_no": "GX2026-001", "position": "guide_zh"},
+  "total_score": 78,
   "max_total": 100,
   "overall_level": "良好",
   "engine_mode": "bailian",
@@ -133,23 +196,27 @@ graph TD
     {
       "dimension_key": "knowledge_qa",
       "dimension_name": "综合知识问答",
+      "question": "请介绍广西的世界遗产与国家级非物质文化遗产代表",
       "max_score": 10,
-      "score": 8.0,
+      "score": 8,
       "level": "良好",
       "items": [],
       "deductions": [
-        {"reason": "未提及红色文化相关知识点", "points": 2.0, "evidence": "回答仅覆盖民俗与地理，无红色文化"}
+        {"reason": "未提及红色文化相关知识点", "points": 2, "evidence": "回答仅覆盖民俗与地理，无红色文化"}
       ],
       "rationale": "覆盖广西地理与民俗，逻辑清晰；红色文化要素缺失。",
       "evidence": [
         {"type": "transcript", "content": "广西是中国唯一沿海的少数民族自治区…", "ref": "00:12-00:48"},
         {"type": "rag", "content": "湘江战役纪念馆是重要红色教育基地", "ref": "KB:广西/红色文化/湘江战役"}
       ],
-      "confidence": 0.86
+      "confidence": 0.86,
+      "removed_segments": [
+        {"text": "请介绍广西的世界遗产与国家级非物质文化遗产代表", "reason": "examiner_label"}
+      ]
     }
   ],
   "review": {
-    "summary": "总分 78.5/100，整体良好；问答类表现稳定。",
+    "summary": "总分 78/100，整体良好；问答类表现稳定。",
     "strengths": ["专题线路讲解"],
     "improvements": ["加强红色文化知识储备"],
     "risk_flags": []
@@ -487,8 +554,22 @@ erDiagram
 | id | UUID PK | 考生 ID |
 | name | VARCHAR(64) | 姓名 |
 | candidate_no | VARCHAR(32) UNIQUE | 考号 |
+| position | VARCHAR(32) | 报考岗位 id |
 | language | VARCHAR(16) | 主语言 |
 | created_at | TIMESTAMP | |
+
+**Question（题库）**
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | UUID PK | 题目 ID |
+| position | VARCHAR(32) | 所属岗位 |
+| dimension_key | VARCHAR(32) | 所属维度 |
+| variant | INT | 套题序号 |
+| content | TEXT | 题干 |
+| key_points | JSONB | 采分点（问答类）|
+| forbidden | JSONB | 违规点 |
+| reference | TEXT | 参考答案 |
 
 **Interview**
 
@@ -509,6 +590,9 @@ erDiagram
 | interview_id | UUID FK | |
 | dimension_key | VARCHAR(32) | 所属维度 |
 | speaker | VARCHAR(16) | 说话人标识 |
+| role | VARCHAR(16) | examiner / candidate |
+| excluded | BOOLEAN | 是否被剔除（考官读题）|
+| exclude_reason | VARCHAR(32) | examiner_label / question_reading |
 | language | VARCHAR(16) | 识别语种 |
 | text | TEXT | 转写文本 |
 | start_ms / end_ms | INT | 时间戳（证据定位）|
@@ -519,7 +603,7 @@ erDiagram
 | --- | --- | --- |
 | id | UUID PK | |
 | interview_id | UUID FK | |
-| total_score | NUMERIC(5,1) | 总分 |
+| total_score | INT | 总分（整数）|
 | overall_level | VARCHAR(16) | |
 | engine_mode | VARCHAR(16) | bailian/mock |
 | review_json | JSONB | 总体评语 |
@@ -534,9 +618,10 @@ erDiagram
 | score_id | UUID FK | |
 | dimension_key | VARCHAR(32) | |
 | item_key | VARCHAR(32) | 评分项（可空）|
-| max_score | NUMERIC(4,1) | |
-| ai_score | NUMERIC(4,1) | AI 建议分 |
-| final_score | NUMERIC(4,1) | 评委确认分 |
+| question | TEXT | 该维度所答题目 |
+| max_score | INT | 满分（整数）|
+| ai_score | INT | AI 建议分（整数）|
+| final_score | INT | 评委确认分（整数）|
 | level | VARCHAR(16) | |
 | deductions_json | JSONB | 扣分项 |
 | rationale | TEXT | 评分依据 |
@@ -574,7 +659,9 @@ erDiagram
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/api/v1/interviews` | 创建面试 |
+| GET | `/api/v1/positions` | 岗位列表 |
+| GET | `/api/v1/positions/{id}/paper?variant=` | 按岗位生成试卷（每位考生题目可不同）|
+| POST | `/api/v1/interviews` | 创建面试（含岗位）|
 | POST | `/api/v1/interviews/{id}/video` | 上传视频（离线）|
 | POST | `/api/v1/interviews/{id}/transcribe` | 实时/触发转写 |
 | POST | `/api/v1/interviews/{id}/score` | 触发评分 |
@@ -588,10 +675,20 @@ erDiagram
 ```http
 POST /api/v1/interviews
 {
-  "candidate": {"name": "张三", "candidate_no": "GX2026-001", "language": "zh"},
+  "candidate": {"name": "张三", "candidate_no": "GX2026-001", "position": "guide_zh", "language": "zh"},
   "mode": "offline"
 }
 → 201 {"interview_id": "4cd469a11ab8", "status": "created"}
+```
+
+转写提交时可携带带说话人标注的原文，系统自动剔除考官读题：
+
+```json
+{
+  "dimension_key": "knowledge_qa",
+  "question": "请介绍广西的世界遗产",
+  "answer_transcript": "考官：请介绍广西的世界遗产。\n考生：灵渠是世界灌溉工程遗产，壮族三月三是国家级非遗。"
+}
 ```
 
 ### 14.2 获取评分（响应）
@@ -641,6 +738,8 @@ POST /api/v1/interviews/{id}/confirm
 | ASR 准确率（外语） | 词准确率 ≥ 90% | 多语种标注集 |
 | 语种识别准确率 | ≥ 98% | 多语种样本 |
 | 视频识别准确率（着装/表情/姿态） | ≥ 90% | 标注帧测试 |
+| 考官读题剔除准确率 | ≥ 98%（不误删考生内容）| 标注转写测试 |
+| 评分取整 | 所有分数/扣分为整数 | 自动校验 |
 | AI 评分一致性（重测） | 同卷多次评分总分方差 ≤ 2 分 | 重复评分回归 |
 | AI 与专家评分一致率 | 总分 MAE ≤ 5 分；维度等级一致率 ≥ 85% | 专家标注校准集 |
 | 证据链完整性 | 100% 分数含 ≥1 条证据 | 自动校验 |

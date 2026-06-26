@@ -157,17 +157,24 @@ class ASRClient:
 
             audio_path = os.path.join(tmpdir, "audio.wav")
             if _has_ffmpeg():
-                _extract_wav(src_path, audio_path)
+                try:
+                    _extract_wav(src_path, audio_path)
+                except subprocess.CalledProcessError as exc:
+                    what = "视频抽取音轨" if is_video else "音频转码"
+                    raise RuntimeError(
+                        f"{what}失败（ffmpeg 退出码 {exc.returncode}）：文件可能损坏或为不受支持的编码"
+                    ) from exc
             elif ext == ".wav":
                 audio_path = src_path
             else:
+                kind = "视频文件需先抽取音轨" if is_video else "该音频格式需转码"
                 segments = _mock_segments(language)
                 return {
                     "text": "\n".join(s["text"] for s in segments),
                     "segments": segments,
                     "engine": "mock",
                     "is_video": is_video,
-                    "note": "服务器缺少 ffmpeg，无法抽取音轨，返回示例整段面试转写。",
+                    "note": f"服务器缺少 ffmpeg（{kind}），无法处理，返回示例整段面试转写。请安装 ffmpeg 后重试。",
                 }
 
             sentences = self._recognize_sentences(audio_path, language)
@@ -196,7 +203,7 @@ class ASRClient:
                 "segments": segments,
                 "engine": "mock",
                 "is_video": is_video,
-                "note": f"语音识别失败，已降级示例整段面试转写：{exc}",
+                "note": f"音频处理/语音识别失败，已降级示例整段面试转写：{exc}",
             }
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)

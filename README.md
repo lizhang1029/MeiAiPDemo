@@ -34,6 +34,14 @@ source .ai_venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+> **关于 ffmpeg：为什么不写进 `requirements.txt`？**
+> `requirements.txt` 只能装 **Python 包（pip 包）**，而 `ffmpeg` 是**系统级可执行程序**（命令行二进制），不是 Python 包，所以无法用 `pip install` 安装、也不能写进 `requirements.txt`，必须用操作系统的包管理器单独安装：
+> - macOS：`brew install ffmpeg`
+> - Ubuntu/Debian：`sudo apt-get install -y ffmpeg`
+> - Windows：到 <https://ffmpeg.org/download.html> 下载，解压后把 `bin` 目录加入 PATH
+>
+> 仅当上传 **非 wav 音频（mp3/m4a 等）或视频** 时才需要 ffmpeg（用于转码 / 抽取音轨）；纯 `.wav` 音频可不装。未安装时系统会降级为示例转写并在页面给出明确提示。
+
 **第 2 步（可选）：跑命令行 demo，快速看结构化评分结果**
 
 ```bash

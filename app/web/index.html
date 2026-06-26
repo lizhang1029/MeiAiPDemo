@@ -134,8 +134,8 @@
         <div class="row" style="margin-top:8px"><button id="transcribe">🎙 转写并分段</button></div>
         <div class="small" id="asrStatus" style="margin-top:6px"></div>
         <div id="segView"></div>
-        <details id="fullView" style="display:none"><summary>查看整段原始转写</summary>
-          <textarea id="fullText" readonly style="min-height:90px;margin-top:6px"></textarea></details>
+        <details id="fullView" style="display:none"><summary>查看解析音频原文（按停顿分行）</summary>
+          <textarea id="fullText" readonly style="min-height:160px;margin-top:6px"></textarea></details>
       </div>
 
       <!-- ⑤ 对应 -->
@@ -244,8 +244,14 @@ function levelListHtml(levels){
     `<li><span class="lvl">${esc(l.name)}（${levelRange(l)}）</span>${l.desc?'：'+esc(l.desc):''}</li>`).join('');
 }
 function renderRubric(){
+  // 评分表解析结果展示已按需求隐藏（解析后的评分项数据 RUBRIC 仍用于评分与⑤对应表）。
+  // 如需恢复展示，取消下方注释即可。
   const box = document.getElementById('rubricView');
   const info = document.getElementById('rubricInfo');
+  box.innerHTML = '';
+  info.textContent = '';
+  return;
+  /*
   if (!RUBRIC || !RUBRIC.items || !RUBRIC.items.length){ box.innerHTML=''; info.textContent=''; return; }
   const pq = RUBRIC.items.filter(i=>i.source==='per_question').length;
   info.textContent = `共 ${RUBRIC.items.length} 项 · 满分合计 ${RUBRIC.total_max} · 按题评分 ${pq} 项`;
@@ -259,6 +265,7 @@ function renderRubric(){
       ${(!crit && !lv && it.standards_text)?`<div class="rsub small">${esc(it.standards_text).replace(/\n/g,'<br>')}</div>`:''}
     </div>`;
   }).join('');
+  */
 }
 
 // ---------- ③ 试题 ----------
@@ -280,15 +287,25 @@ async function parsePaper(){
 async function transcribeFull(){
   const fi = document.getElementById('fullFile');
   if (!fi.files.length){ alert('请先选择整段面试的音/视频文件'); return; }
+  const f = fi.files[0];
+  const isVideo = /^video\//.test(f.type) || /\.(mp4|mov|avi|mkv|flv|webm|wmv|m4v|ts)$/i.test(f.name);
   const fd = new FormData();
-  fd.append('file', fi.files[0]); fd.append('language', language());
+  fd.append('file', f); fd.append('language', language());
   fd.append('pause_ms', document.getElementById('pauseMs').value || '2000');
   const status = document.getElementById('asrStatus');
-  status.textContent = '🔄 转写并分段中，请稍候…';
+  const btn = document.getElementById('transcribe');
+  btn.disabled = true;
+  status.innerHTML = `🔄 正在${isVideo?'抽取音轨并':''}转写并分段，请稍候…`
+    + `<br><span class="small">音/视频较长时识别可能需要数十秒至数分钟${isVideo?'（视频还需先抽取音轨，更慢）':''}，请勿关闭页面。</span>`;
   try {
     const r = await fetch('/transcribe_full', {method:'POST', body: fd});
-    const j = await r.json();
-    if (!r.ok){ status.textContent = '转写失败：'+(j.detail||r.status); return; }
+    let j = null;
+    try { j = await r.json(); } catch(_){ j = null; }
+    if (!r.ok){
+      status.innerHTML = `<span style="color:var(--warn)">❌ 转写失败（HTTP ${r.status}）</span>`
+        + `<br><span class="small">原因：${esc((j&&j.detail)||'服务器未返回详细信息，请查看后端日志')}</span>`;
+      return;
+    }
     SEGMENTS = j.segments || [];
     if (j.engine === 'mock'){
       status.innerHTML = `<span style="color:var(--warn)">⚠ 未使用真实语音识别，返回的是示例文本（与你上传的音频无关）</span>`
@@ -298,10 +315,13 @@ async function transcribeFull(){
       status.innerHTML = `✅ 已转写并分段（真实识别 ${esc(j.engine)}${j.is_video?' · 视频抽音轨':''}）· 共 ${SEGMENTS.length} 段` + (j.note?(' · '+esc(j.note)):'');
     }
     renderSegments();
-    document.getElementById('fullText').value = j.text || '';
-    document.getElementById('fullView').style.display = '';
+    renderFullText(j.text || '');
     buildMap();
-  } catch(e){ status.textContent = '转写出错：'+e.message; }
+  } catch(e){
+    status.innerHTML = `<span style="color:var(--warn)">❌ 转写出错</span><br><span class="small">原因：${esc(e.message||String(e))}</span>`;
+  } finally {
+    btn.disabled = false;
+  }
 }
 function renderSegments(){
   const box = document.getElementById('segView');
@@ -309,6 +329,20 @@ function renderSegments(){
   box.innerHTML = SEGMENTS.map(s =>
     `<div class="seg"><div class="sh">第 ${s.index+1} 段 · ${fmtMs(s.begin_ms)}–${fmtMs(s.end_ms)}（含考官读题/提示，评分时自动剔除）</div>${esc(s.text)}</div>`
   ).join('');
+}
+// 解析音频原文：按长停顿（分段）做间隔分行展示，便于通读核对
+function renderFullText(fallback){
+  const ta = document.getElementById('fullText');
+  const view = document.getElementById('fullView');
+  let text;
+  if (SEGMENTS.length){
+    text = SEGMENTS.map(s => `第 ${s.index+1} 段（${fmtMs(s.begin_ms)}–${fmtMs(s.end_ms)}）：\n${s.text}`).join('\n\n');
+  } else {
+    text = fallback || '';
+  }
+  ta.value = text;
+  view.open = true;
+  view.style.display = '';
 }
 
 // ---------- ⑤ 对应 ----------

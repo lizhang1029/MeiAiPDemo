@@ -1,9 +1,11 @@
-"""转写清洗：剔除考官读题内容，仅保留考生回答。
+"""转写清洗：剔除与考生作答无关的内容，仅保留考生回答。
 
-面试录像转写时，考官常会朗读题目；这些内容不应计入考生评分。
-本模块通过两种信号识别并剔除考官内容：
+面试录音/录像转写时，除考生回答外，常混入考官读题与考务口令
+（如「听到提示音后可以开始作答」「下一题」「时间到」）；这些内容
+不应计入考生评分。本模块通过三类信号识别并剔除：
 1. 说话人标注：行首形如「考官：」「主考官:」「Examiner:」等。
 2. 题目相似度：未标注说话人时，与题目高度相似的行视为考官读题。
+3. 考务口令：匹配「开始作答/时间到/下一题」等与答题无关的提示语。
 """
 from __future__ import annotations
 
@@ -18,6 +20,31 @@ _SPEAKER_RE = re.compile(
 )
 
 _EXAMINER_ROLES = {"考官", "主考官", "面试官", "考评员", "监考", "examiner", "interviewer"}
+
+# 与考生作答无关的考务口令/提示（音频中可能无说话人标注，也需剔除）
+_PROMPT_PATTERNS = [
+    r"听到提示音.{0,6}(可以|请)?开始",
+    r"(现在|可以|请|那么)\s*(可以)?开始(作答|答题|回答|讲解|表演)",
+    r"请开始(你的)?(作答|答题|回答|讲解|表演)?",
+    r"准备时间",
+    r"(答题|作答|讲解)时间(为|是|还)?",
+    r"还(剩|有).{0,4}分钟",
+    r"时间到",
+    r"停止(作答|答题|回答)",
+    r"^下\s*(一|1)?\s*题",
+    r"请看(大屏幕|屏幕|题目|试题|大屏)",
+    r"^请考生",
+    r"宣读.{0,4}(纪律|须知)",
+    r"考试(正式)?(开始|结束)",
+    r"(抽|抽到).{0,4}第?\s*\d+\s*题",
+    r"请(听题|看题|作答|开始)",
+]
+_PROMPT_RE = re.compile("|".join(_PROMPT_PATTERNS), re.IGNORECASE)
+
+
+def _is_prompt(text: str) -> bool:
+    """是否为与答题无关的考务口令/提示语。"""
+    return bool(_PROMPT_RE.search(text or ""))
 
 
 def _normalize(text: str) -> str:
@@ -47,7 +74,7 @@ def clean_transcript(
     返回:
         {
           "answer": "仅含考生回答的文本",
-          "removed": [{"text": "...", "reason": "examiner_label|question_reading"}],
+          "removed": [{"text": "...", "reason": "examiner_label|question_reading|examiner_prompt"}],
           "kept_segments": [...],
         }
     """
@@ -71,7 +98,10 @@ def clean_transcript(
             if role in _EXAMINER_ROLES:
                 removed.append({"text": body or line.strip(), "reason": "examiner_label"})
                 continue
-            # 考生标注，保留正文
+            # 考生标注：保留正文，但其中夹带的考务口令仍剔除
+            if body and _is_prompt(body):
+                removed.append({"text": body, "reason": "examiner_prompt"})
+                continue
             if body:
                 kept.append(body)
             continue
@@ -79,6 +109,10 @@ def clean_transcript(
         # 无说话人标注：若与题目高度相似，判为考官读题
         if question and _similar(line, question) >= similarity_threshold:
             removed.append({"text": line.strip(), "reason": "question_reading"})
+            continue
+        # 无说话人标注：考务口令/提示语，与答题无关
+        if _is_prompt(line):
+            removed.append({"text": line.strip(), "reason": "examiner_prompt"})
             continue
         kept.append(line.strip())
 

@@ -207,7 +207,11 @@ class ASRClient:
         return "".join(s.get("text", "") for s in sentences).strip()
 
     def _recognize_sentences(self, audio_path: str, language: str) -> List[Dict[str, Any]]:
-        """调用 Paraformer 同步识别，返回带时间戳的句子列表。"""
+        """调用 Paraformer 同步识别，返回带时间戳的句子列表。
+
+        识别失败（status_code != 200）时抛出异常并带上百炼返回的具体错误信息，
+        以便上层把真实原因透传到前端，而不是静默降级为示例转写。
+        """
         from dashscope.audio.asr import Recognition  # type: ignore
 
         recognition = Recognition(
@@ -218,6 +222,13 @@ class ASRClient:
             callback=None,
         )
         result = recognition.call(audio_path)
+
+        status = getattr(result, "status_code", 200)
+        if status is not None and status != 200:
+            code = getattr(result, "code", "")
+            message = getattr(result, "message", "")
+            raise RuntimeError(f"百炼识别返回 {status} {code}：{message}".strip())
+
         sentences = result.get_sentence() if hasattr(result, "get_sentence") else None
         return sentences or []
 

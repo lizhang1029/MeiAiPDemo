@@ -51,6 +51,16 @@
     table.rubric { width:100%; border-collapse:collapse; font-size:12px; margin-top:8px; }
     table.rubric th, table.rubric td { border:1px solid #334155; padding:6px 8px; text-align:left; vertical-align:top; }
     table.rubric th { color:var(--muted); font-weight:600; }
+    .ritem { border:1px solid #334155; border-radius:8px; padding:10px 12px; margin-top:8px; }
+    .ritem .rhead { font-size:13px; margin-bottom:4px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+    .ritem .rsub { margin-top:6px; }
+    .ritem .rlabel { font-size:11px; color:var(--muted); margin-bottom:2px; }
+    .ritem ul { margin:2px 0; padding-left:18px; font-size:12px; }
+    .ritem li { margin:2px 0; }
+    .ritem .lvl { color:var(--accent); }
+    .stdbox { margin-top:8px; }
+    .stdbox ul { margin:2px 0; padding-left:18px; font-size:12px; }
+    .stdbox li { margin:2px 0; }
   </style>
 </head>
 <body>
@@ -224,17 +234,31 @@ async function parseRubric(){
   RUBRIC = j;
   renderRubric();
 }
+function levelRange(l){ return l.min===l.max ? `${l.min}分` : `${l.min}-${l.max}分`; }
+function critListHtml(criteria){
+  return (criteria||[]).map(c =>
+    `<li><b>${esc(c.name)}</b>（${c.points}分）${c.desc?'：'+esc(c.desc):''}</li>`).join('');
+}
+function levelListHtml(levels){
+  return (levels||[]).map(l =>
+    `<li><span class="lvl">${esc(l.name)}（${levelRange(l)}）</span>${l.desc?'：'+esc(l.desc):''}</li>`).join('');
+}
 function renderRubric(){
   const box = document.getElementById('rubricView');
   const info = document.getElementById('rubricInfo');
   if (!RUBRIC || !RUBRIC.items || !RUBRIC.items.length){ box.innerHTML=''; info.textContent=''; return; }
   const pq = RUBRIC.items.filter(i=>i.source==='per_question').length;
   info.textContent = `共 ${RUBRIC.items.length} 项 · 满分合计 ${RUBRIC.total_max} · 按题评分 ${pq} 项`;
-  box.innerHTML = '<table class="rubric"><tr><th>评分项</th><th>满分</th><th>评分来源</th><th>等级/标准</th></tr>' +
-    RUBRIC.items.map(it => {
-      const lv = (it.levels||[]).map(l=>`${l.name}(${l.min}-${l.max})`).join('、') || (it.standards_text||'').slice(0,40);
-      return `<tr><td>${esc(it.name)}</td><td>${it.max_score}</td><td>${srcTag(it.source)}</td><td class="small">${esc(lv)}</td></tr>`;
-    }).join('') + '</table>';
+  box.innerHTML = RUBRIC.items.map(it => {
+    const crit = critListHtml(it.criteria);
+    const lv = levelListHtml(it.levels);
+    return `<div class="ritem">
+      <div class="rhead"><b>${esc(it.name)}</b><span class="tag">满分 ${it.max_score}</span><span class="tag">权重 ${it.weight}</span>${srcTag(it.source)}</div>
+      ${crit?`<div class="rsub"><div class="rlabel">评分点（子项）</div><ul>${crit}</ul></div>`:''}
+      ${lv?`<div class="rsub"><div class="rlabel">等级档位</div><ul>${lv}</ul></div>`:''}
+      ${(!crit && !lv && it.standards_text)?`<div class="rsub small">${esc(it.standards_text).replace(/\n/g,'<br>')}</div>`:''}
+    </div>`;
+  }).join('');
 }
 
 // ---------- ③ 试题 ----------
@@ -266,7 +290,13 @@ async function transcribeFull(){
     const j = await r.json();
     if (!r.ok){ status.textContent = '转写失败：'+(j.detail||r.status); return; }
     SEGMENTS = j.segments || [];
-    status.textContent = `✅ 已转写并分段（${j.engine}${j.is_video?' · 视频抽音轨':''}）· 共 ${SEGMENTS.length} 段` + (j.note?(' · '+j.note):'');
+    if (j.engine === 'mock'){
+      status.innerHTML = `<span style="color:var(--warn)">⚠ 未使用真实语音识别，返回的是示例文本（与你上传的音频无关）</span>`
+        + `<br><span class="small">原因：${esc(j.note||'未配置 DASHSCOPE_API_KEY 或识别失败')}</span>`
+        + `<br><span class="small">共 ${SEGMENTS.length} 段（示例）。如需识别真实音频：设置 DASHSCOPE_API_KEY、安装 dashscope 与 ffmpeg 后重启。</span>`;
+    } else {
+      status.innerHTML = `✅ 已转写并分段（真实识别 ${esc(j.engine)}${j.is_video?' · 视频抽音轨':''}）· 共 ${SEGMENTS.length} 段` + (j.note?(' · '+esc(j.note)):'');
+    }
     renderSegments();
     document.getElementById('fullText').value = j.text || '';
     document.getElementById('fullView').style.display = '';
@@ -310,9 +340,16 @@ function buildMap(){
     } else {
       inner = `<label>人工录入分数（0 ~ ${it.max_score}）</label><input data-manual type="number" min="0" max="${it.max_score}" value="0" />`;
     }
+    const crit = critListHtml(it.criteria);
+    const lv = levelListHtml(it.levels);
+    const std = (crit || lv)
+      ? `<details class="stdbox"><summary>评分标准 / 等级档位（评分依据）</summary>
+          ${crit?`<div class="rlabel" style="margin-top:6px">评分点（子项）</div><ul>${crit}</ul>`:''}
+          ${lv?`<div class="rlabel">等级档位</div><ul>${lv}</ul>`:''}</details>`
+      : (it.standards_text?`<details class="stdbox"><summary>评分标准（评分依据）</summary><div class="small" style="margin-top:6px">${esc(it.standards_text).replace(/\n/g,'<br>')}</div></details>`:'');
     return `<div class="qrow" data-item="${idx}" data-source="${it.source}" data-max="${it.max_score}">
       <div class="qt"><span>${esc(it.name)} · 满分 ${it.max_score}</span>${srcTag(it.source)}</div>
-      ${inner}</div>`;
+      ${std}${inner}</div>`;
   }).join('');
   box.innerHTML = html;
   box.querySelectorAll('select[data-seg]').forEach(sel => sel.addEventListener('change', onSegChange));

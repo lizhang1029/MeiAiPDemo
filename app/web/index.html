@@ -14,15 +14,17 @@
     .layout { display:grid; grid-template-columns: 1fr 1fr; gap:18px; padding:22px 28px; }
     .card { background:var(--card); border:1px solid #334155; border-radius:12px; padding:18px; }
     .card h2 { font-size:15px; margin:0 0 12px; color:var(--accent); }
+    .step { border:1px solid #334155; border-radius:10px; padding:14px; margin-bottom:14px; }
+    .step > .st { font-size:14px; color:var(--accent); margin:0 0 10px; font-weight:600; }
     label { display:block; font-size:12px; color:var(--muted); margin:10px 0 4px; }
     input, textarea, select { width:100%; background:#0f172a; border:1px solid #334155; color:var(--text); border-radius:8px; padding:8px 10px; font-size:13px; }
-    textarea { resize:vertical; min-height:70px; }
-    .dim-block { border:1px dashed #334155; border-radius:10px; padding:12px; margin-bottom:12px; }
-    .dim-block .t { font-size:13px; color:var(--accent); margin-bottom:6px; }
+    textarea { resize:vertical; min-height:60px; }
+    textarea[readonly] { background:#0b1220; color:var(--muted); }
+    .qrow { border:1px dashed #334155; border-radius:10px; padding:12px; margin-bottom:12px; }
+    .qrow .qt { font-size:13px; color:var(--accent); margin-bottom:6px; display:flex; justify-content:space-between; align-items:center; }
+    .grid3 { display:grid; grid-template-columns: 1fr 90px; gap:8px; }
     button { background:var(--accent); color:#06283a; border:none; border-radius:8px; padding:10px 18px; font-weight:600; cursor:pointer; font-size:14px; }
     button.ghost { background:transparent; color:var(--accent); border:1px solid var(--accent); }
-    button.tab { background:transparent; color:var(--muted); border:1px solid #334155; padding:7px 14px; font-size:13px; }
-    button.tab.active { color:#06283a; background:var(--accent); border-color:var(--accent); }
     .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
     .total { font-size:34px; font-weight:700; }
     .total small { font-size:14px; color:var(--muted); }
@@ -37,165 +39,126 @@
     .ev { font-size:12px; color:#7dd3fc; margin-top:2px; }
     .rm { font-size:12px; color:#fdba74; margin-top:2px; }
     .img { font-size:12px; color:#a5b4fc; margin-top:2px; }
+    .seg { border-left:3px solid var(--accent); padding:6px 10px; margin:6px 0; background:#0b1220; border-radius:0 8px 8px 0; }
+    .seg .sh { font-size:11px; color:var(--muted); }
     .empty { color:var(--muted); font-size:13px; }
     a { color:var(--accent); }
     .hint { font-size:11px; color:var(--muted); margin:4px 0 0; }
+    details summary { cursor:pointer; color:var(--accent); font-size:12px; margin-top:8px; }
   </style>
 </head>
 <body>
   <header>
-    <h1>🎤 AI 辅助导游面试评分系统 <span class="small">Demo</span></h1>
+    <h1>🎤 AI 辅助导游面试评分系统 <span class="small">Demo · 整段面试评分</span></h1>
     <span class="mode" id="mode">engine: …</span>
   </header>
 
   <div class="layout">
     <div class="card">
-      <h2>① 试题来源 · 录入题目与回答</h2>
+      <h2>整段面试 · 分步评分向导</h2>
+
       <div class="row">
         <div style="flex:1"><label>考生姓名</label><input id="name" value="张三" /></div>
         <div style="flex:1"><label>考号</label><input id="no" value="GX2026-001" /></div>
+        <div style="width:110px"><label>语言</label>
+          <select id="language"><option value="zh">普通话</option><option value="vi">越南语</option><option value="en">英语</option></select>
+        </div>
       </div>
 
-      <label>试题来源</label>
-      <div class="row">
-        <button class="tab active" id="srcBank">岗位题库</button>
-        <button class="tab" id="srcImport">导入试题 JSON（接口）</button>
+      <div class="step">
+        <p class="st">① 上传整段面试录音并按题分段</p>
+        <p class="hint">上传一名考生整场面试的一个音频/视频文件。系统转写后，会按「每题作答前的明显停顿」自动切分为多段，按题目顺序对应各题回答。</p>
+        <div class="row" style="margin-top:8px">
+          <input type="file" id="fullFile" accept="audio/*,video/*" style="flex:1;font-size:12px;padding:4px" />
+          <div style="width:160px"><label style="margin:0">题前停顿阈值(ms)</label><input id="pauseMs" type="number" value="2000" min="500" step="100" /></div>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <button id="transcribe">🎙 转写并分段</button>
+        </div>
+        <div class="small" id="asrStatus" style="margin-top:6px"></div>
+        <div id="segView"></div>
+        <details id="fullView" style="display:none"><summary>查看整段原始转写</summary>
+          <textarea id="fullText" readonly style="min-height:90px;margin-top:6px"></textarea></details>
       </div>
 
-      <div id="bankPanel">
-        <label>报考岗位</label>
-        <select id="position"></select>
-        <p class="hint">切换岗位会自动载入对应题目（每位考生题目可不同）。</p>
-      </div>
-
-      <div id="importPanel" style="display:none">
-        <label>试题 JSON（考务接口下发，结构 sections → groups → items）</label>
-        <textarea id="paperJson" style="min-height:120px" placeholder="粘贴接口返回的试题 JSON，或点下方按钮载入样例..."></textarea>
+      <div class="step">
+        <p class="st">② 导入试题 JSON（仅取题干）</p>
+        <textarea id="paperJson" style="min-height:90px" placeholder="粘贴考务接口下发的试题 JSON（结构 sections → groups → items），或点下方按钮载入样例。仅提取各题题干，按顺序与各段回答、各维度对齐。"></textarea>
         <div class="row" style="margin-top:8px">
           <button class="ghost" id="loadZh">载入普通话样例</button>
           <button class="ghost" id="loadVi">载入越南语样例</button>
-          <button id="parsePaper">解析试题</button>
+          <button id="parsePaper">解析题干</button>
         </div>
-        <p class="hint" id="paperInfo">支持复合题（手动抽题）、纯文本题与图片题；维度与满分按实际作答题目自动生成。</p>
+        <p class="hint" id="paperInfo">导入的 JSON 只提供题干；评分维度、满分与评分标准以下方手动录入为准。</p>
       </div>
 
-      <p class="hint">可直接粘贴转写文本，或在各维度下上传面试录音/录像，由百炼 Paraformer 自动转写。转写中以「考官：」开头的读题行会被自动剔除，仅对考生回答评分；所有分数为整数。</p>
-      <div id="dims"></div>
-      <div class="row" style="margin-top:8px">
-        <button id="run">开始 AI 评分</button>
-        <button class="ghost" id="demo">填充示例数据（含考官读题）</button>
+      <div class="step">
+        <p class="st">③ 录入各维度评分标准与满分</p>
+        <p class="hint">每行 = 一题：题干只读、该题考生回答自动回填（可改）；维度名 / 满分 / 评分标准由你手动录入。<b>总分以评分表合计为准。</b></p>
+        <div class="row" style="margin-top:8px">
+          <button class="ghost" id="buildTable">按题目数生成评分表</button>
+          <button class="ghost" id="demoStd">填充示例评分标准</button>
+          <span class="small" id="totalInfo" style="margin-left:auto"></span>
+        </div>
+        <div id="rubric" style="margin-top:10px"><div class="empty">完成 ① / ② 后，点「按题目数生成评分表」。</div></div>
+      </div>
+
+      <div class="step">
+        <p class="st">④ 开始评分</p>
+        <p class="hint">评分时自动剔除每段中混入的考官读题与「可以开始作答 / 时间到 / 下一题」等无关提示，仅对考生回答打分；所有分数为整数，并给出剔除项与证据链。</p>
+        <button id="run" style="margin-top:8px">开始 AI 评分</button>
       </div>
     </div>
 
     <div class="card">
-      <h2>② 评分结果与证据链</h2>
-      <div id="result"><div class="empty">提交后在此显示总分（整数）、分项分、扣分原因、引用证据、AI 置信度，以及被剔除的考官读题内容。</div></div>
+      <h2>评分结果与证据链</h2>
+      <div id="result"><div class="empty">评分后在此显示总分（整数）、分项分、扣分原因、引用证据、AI 置信度，以及被剔除的考官读题/无关提示。</div></div>
     </div>
   </div>
 
 <script>
-let RUBRIC = null;
-let MODE = 'bank';            // bank | import
-let IMPORTED = null;          // 解析后的导入试卷
-let SAMPLES = null;           // 内置样例缓存
-let CURRENT_SPECS = [];       // 当前渲染的维度规格，用于评分时回填 max_score/modality
-// 示例回答：故意加入「考官：」读题行，演示自动剔除
-const SAMPLE = {
-  language_expression: "考官：请用一段话欢迎来自全国各地的游客，并介绍今天的行程安排。\n考生：各位游客大家好，我是导游张三，非常高兴为大家服务。今天我们将用清晰流畅的普通话，首先游览漓江，其次参观象鼻山，最后体验壮族民俗，祝大家旅途愉快。",
-  route_explanation: "考官：请设计并讲解一条专题线路。\n考生：本次专题线路以漓江山水为主题。首先从象鼻山出发，它是桂林城徽；其次乘船游览漓江百里画廊，欣赏九马画山；最后到达兴安灵渠，感受秦代水利智慧，整条线路串联自然与历史文化。",
-  scenic_explanation: "考官：请现场讲解该景区，突出其特色与文化内涵。\n考生：象鼻山位于漓江与桃花江汇流处，因山形似巨象临江饮水而得名。我们沿江边动线讲解，先观全景，再看水月洞，最后讲述象山传说，传递桂林山水文化的独特价值。",
-  service_qa: "考官：请简述标准导游服务流程及全程应遵守的服务规范。\n考生：导游服务流程包括接团准备、首站接待、行程讲解、安全提示和送团总结。全程要主动告知、规范礼仪，依据导游管理条例，不得擅自改变行程或诱导购物，始终把游客安全放在首位。",
-  contingency_qa: "考官：行程途中遇到突发情况，你将如何处置？\n考生：我会立即停止行程，拨打120，保护现场并安抚其他游客，同时上报旅行社，确保人身安全优先，方案合法合规、切实可行。",
-  knowledge_qa: "考官：请介绍广西的代表性文化或物产。\n考生：广西是中国唯一沿海的少数民族自治区，壮族三月三是国家级非遗，灵渠是世界灌溉工程遗产，刘三姐歌谣也是国家级非遗，沙田柚、百色芒果等是国家地理标志产品。",
-  translation_out: "考官：在未来的三天时间里，将由我为大家提供服务。\n考生：Trong ba ngày tới, tôi sẽ là hướng dẫn viên phục vụ quý khách, chúc quý khách có chuyến đi vui vẻ.",
-  translation_in: "考官：请将下列外语内容翻译为中文。\n考生：女士们先生们，欢迎来到广西，祝大家旅途愉快、身体健康。",
-};
+let SEGMENTS = [];     // 整段录音分段结果 [{index, begin_ms, end_ms, text}]
+let QSTEMS = [];       // 导入试题题干 [{question, images}]
+let IMPORTED = null;   // 导入解析结果
+let SAMPLES = null;    // 样例缓存
 
 async function init(){
   const h = await (await fetch('/health')).json();
   document.getElementById('mode').textContent = 'engine: ' + h.engine_mode;
-  RUBRIC = await (await fetch('/rubric')).json();
-  const pos = await (await fetch('/positions')).json();
-  const sel = document.getElementById('position');
-  sel.innerHTML = pos.positions.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-  sel.onchange = loadBankPaper;
-  document.getElementById('dims').addEventListener('click', e => {
-    const btn = e.target.closest('.asr-btn');
-    if (btn) transcribeDim(btn.getAttribute('data-asr'));
-  });
-  switchMode('bank');
 }
 
-function currentLanguage(){
-  if (MODE==='import' && IMPORTED) return IMPORTED.language || 'zh';
-  return document.getElementById('position').value === 'guide_en' ? 'en' : 'zh';
-}
+function language(){ return document.getElementById('language').value; }
 
-async function transcribeDim(key){
-  const fileInput = document.querySelector(`input[data-file="${key}"]`);
-  const status = document.querySelector(`[data-status="${key}"]`);
-  if (!fileInput || !fileInput.files.length){ alert('请先选择音/视频文件'); return; }
+function fmtMs(ms){ if (ms==null) return ''; const s=Math.round(ms/1000); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); }
+
+async function transcribeFull(){
+  const fi = document.getElementById('fullFile');
+  if (!fi.files.length){ alert('请先选择整段面试的音/视频文件'); return; }
   const fd = new FormData();
-  fd.append('file', fileInput.files[0]);
-  fd.append('language', currentLanguage());
-  status.textContent = '🔄 转写中，请稍候…';
+  fd.append('file', fi.files[0]);
+  fd.append('language', language());
+  fd.append('pause_ms', document.getElementById('pauseMs').value || '2000');
+  const status = document.getElementById('asrStatus');
+  status.textContent = '🔄 转写并分段中，请稍候…';
   try {
-    const r = await fetch('/transcribe', {method:'POST', body: fd});
+    const r = await fetch('/transcribe_full', {method:'POST', body: fd});
     const j = await r.json();
     if (!r.ok){ status.textContent = '转写失败：' + (j.detail || r.status); return; }
-    const ta = document.querySelector(`textarea[data-key="${key}"]`);
-    if (ta) ta.value = j.text || '';
-    status.textContent = `✅ 已转写（${j.engine}${j.is_video?' · 视频抽音轨':''}）` + (j.note ? (' · ' + j.note) : '');
+    SEGMENTS = j.segments || [];
+    status.textContent = `✅ 已转写并分段（${j.engine}${j.is_video?' · 视频抽音轨':''}）· 共 ${SEGMENTS.length} 段` + (j.note ? (' · ' + j.note) : '');
+    renderSegments();
+    document.getElementById('fullText').value = j.text || '';
+    document.getElementById('fullView').style.display = '';
+    buildTable();
   } catch(e){ status.textContent = '转写出错：' + e.message; }
 }
 
-function normFromRubric(){
-  return RUBRIC.dimensions.map(d => ({ key:d.key, name:d.name, max_score:d.max_score, modality:d.modality, question:'', images:[] }));
-}
-function normFromImported(){
-  return IMPORTED.dimensions.map(d => ({ key:d.dimension_key, name:d.dimension_name, max_score:d.max_score, modality:d.modality, question:d.question, images:d.images||[] }));
-}
-
-function renderDims(specs){
-  CURRENT_SPECS = specs;
-  const box = document.getElementById('dims');
-  box.innerHTML = '';
-  if (!specs.length){ box.innerHTML = '<div class="empty">请先选择岗位或导入并解析试题。</div>'; return; }
-  specs.forEach(d => {
-    const imgs = (d.images||[]).map((u,i)=>`<a class="img" href="${u}" target="_blank">🖼 题目图片${(d.images.length>1)?(' '+(i+1)):''}</a>`).join(' ');
-    const div = document.createElement('div');
-    div.className = 'dim-block';
-    div.innerHTML = `<div class="t">${d.name} · 满分${d.max_score}（${d.modality}）</div>
-      <label>题目</label><input data-q="${d.key}" placeholder="【${d.name}】题目" value="${(d.question||'').replace(/"/g,'&quot;')}" />
-      ${imgs?`<div style="margin-top:6px">${imgs}</div>`:''}
-      <label>回答转写（可含「考官：」读题行）</label>
-      <textarea data-key="${d.key}" placeholder="输入候选人在【${d.name}】的回答/讲解转写，或下方上传音/视频自动转写..."></textarea>
-      <div class="row" style="margin-top:6px">
-        <input type="file" class="asr-file" data-file="${d.key}" accept="audio/*,video/*" style="flex:1;font-size:12px;padding:4px" />
-        <button class="ghost asr-btn" data-asr="${d.key}" type="button">🎙 转写</button>
-      </div>
-      <div class="small asr-status" data-status="${d.key}" style="margin-top:4px"></div>`;
-    box.appendChild(div);
-  });
-}
-
-async function loadBankPaper(){
-  const pid = document.getElementById('position').value;
-  const data = await (await fetch(`/positions/${pid}/paper`)).json();
-  (data.paper||[]).forEach(item => {
-    const q = document.querySelector(`input[data-q="${item.dimension_key}"]`);
-    if (q) q.value = item.question || '';
-  });
-}
-
-function switchMode(m){
-  MODE = m;
-  document.getElementById('srcBank').classList.toggle('active', m==='bank');
-  document.getElementById('srcImport').classList.toggle('active', m==='import');
-  document.getElementById('bankPanel').style.display = m==='bank' ? '' : 'none';
-  document.getElementById('importPanel').style.display = m==='import' ? '' : 'none';
-  if (m==='bank'){ renderDims(normFromRubric()); loadBankPaper(); }
-  else { renderDims(IMPORTED ? normFromImported() : []); }
+function renderSegments(){
+  const box = document.getElementById('segView');
+  if (!SEGMENTS.length){ box.innerHTML=''; return; }
+  box.innerHTML = SEGMENTS.map(s =>
+    `<div class="seg"><div class="sh">第 ${s.index+1} 段 · ${fmtMs(s.begin_ms)}–${fmtMs(s.end_ms)}（含考官读题/提示，评分时自动剔除）</div>${(s.text||'').replace(/</g,'&lt;')}</div>`
+  ).join('');
 }
 
 async function ensureSamples(){
@@ -216,47 +179,113 @@ async function parsePaper(){
   const r = await fetch('/papers/import', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)});
   if (!r.ok){ const e = await r.json().catch(()=>({})); alert('导入失败：' + (e.detail || r.status)); return; }
   IMPORTED = await r.json();
+  QSTEMS = (IMPORTED.dimensions||[]).map(d => ({ question:d.question||'', images:d.images||[], name:d.dimension_name||'' }));
+  if (language()==='zh' && (IMPORTED.language==='vi')) {} // 语言以上方选择为准
   document.getElementById('paperInfo').textContent =
-    `已解析：${IMPORTED.paper_name}（${IMPORTED.language}）· 共 ${IMPORTED.dimensions.length} 个维度 · 满分合计 ${IMPORTED.total_max}`;
-  renderDims(normFromImported());
+    `已解析：${IMPORTED.paper_name} · 取得 ${QSTEMS.length} 道题干（维度/满分/评分标准请在下方手动录入）。`;
+  buildTable();
+}
+
+// 读取当前已填值，重建表时尽量保留
+function snapshotRows(){
+  const map = {};
+  document.querySelectorAll('#rubric .qrow').forEach(row => {
+    const i = row.getAttribute('data-row');
+    map[i] = {
+      name: row.querySelector('[data-name]').value,
+      max: row.querySelector('[data-max]').value,
+      std: row.querySelector('[data-std]').value,
+      ans: row.querySelector('[data-ans]').value,
+    };
+  });
+  return map;
+}
+
+function buildTable(){
+  const prev = snapshotRows();
+  const n = Math.max(QSTEMS.length, SEGMENTS.length);
+  const box = document.getElementById('rubric');
+  if (!n){ box.innerHTML = '<div class="empty">完成 ① 上传分段 或 ② 导入题干后，点「按题目数生成评分表」。</div>'; updateTotal(); return; }
+  let html = '';
+  for (let i=0;i<n;i++){
+    const q = QSTEMS[i] || {question:'', images:[], name:''};
+    const seg = SEGMENTS[i];
+    const p = prev[i] || {};
+    const name = p.name ?? (q.name || ('第'+(i+1)+'题'));
+    const max = p.max ?? 20;
+    const std = p.std ?? '';
+    const ans = (p.ans!==undefined) ? p.ans : (seg ? seg.text : '');
+    const imgs = (q.images||[]).map((u,k)=>`<a class="img" href="${u}" target="_blank">🖼 题目图片${(q.images.length>1)?(' '+(k+1)):''}</a>`).join(' ');
+    html += `<div class="qrow" data-row="${i}">
+      <div class="qt"><span>第 ${i+1} 题</span><span class="small">${seg?('对应录音第 '+(i+1)+' 段'):'（无对应录音段）'}</span></div>
+      <label>题干（来自导入 JSON，只读）</label>
+      <textarea data-q readonly placeholder="未导入题干，可仅按回答与评分标准评分">${(q.question||'').replace(/</g,'&lt;')}</textarea>
+      ${imgs?`<div style="margin-top:4px">${imgs}</div>`:''}
+      <div class="grid3" style="margin-top:6px">
+        <div><label style="margin:0">评分维度名</label><input data-name value="${String(name).replace(/"/g,'&quot;')}" /></div>
+        <div><label style="margin:0">满分</label><input data-max type="number" min="1" value="${max}" /></div>
+      </div>
+      <label>评分标准 / 评分要点</label>
+      <textarea data-std placeholder="录入该维度评分标准，如：要点完整(8)、讲解逻辑(6)、表达流畅(6)…">${String(std).replace(/</g,'&lt;')}</textarea>
+      <label>该题考生回答（自动回填，可修改；含读题/提示将自动剔除）</label>
+      <textarea data-ans placeholder="该题考生回答转写">${(ans||'').replace(/</g,'&lt;')}</textarea>
+    </div>`;
+  }
+  box.innerHTML = html;
+  box.querySelectorAll('[data-max]').forEach(el => el.addEventListener('input', updateTotal));
+  updateTotal();
+}
+
+function updateTotal(){
+  let total = 0, rows = 0;
+  document.querySelectorAll('#rubric [data-max]').forEach(el => { total += parseInt(el.value||'0',10)||0; rows++; });
+  document.getElementById('totalInfo').textContent = rows ? `共 ${rows} 题 · 满分合计 ${total}` : '';
+}
+
+const DEMO_STD = [
+  '要点完整、覆盖关键信息(8)；讲解逻辑清晰(6)；语言流畅、表达得体(6)。',
+  '景区特色与文化内涵准确(8)；动线合理(6)；讲解生动、富感染力(6)。',
+  '流程/规范要点齐全(4)；条理清晰(3)；表述准确(3)。',
+  '处置合法合规、切实可行(4)；安全优先(3)；应变灵活(3)。',
+  '知识准确、举例恰当(4)；信息量充分(3)；表达清晰(3)。',
+];
+function fillDemoStd(){
+  document.querySelectorAll('#rubric .qrow').forEach((row,i) => {
+    const std = row.querySelector('[data-std]');
+    if (std && !std.value) std.value = DEMO_STD[i % DEMO_STD.length];
+  });
 }
 
 function levelClass(ratio){ return ratio>=0.85?'b-good':ratio>=0.6?'b-mid':'b-bad'; }
 
-function fillDemo(){
-  document.querySelectorAll('#dims textarea').forEach(t => {
-    const k = t.getAttribute('data-key');
-    if (SAMPLE[k]) t.value = SAMPLE[k];
-  });
-}
-
 async function run(){
-  const specByKey = {};
-  CURRENT_SPECS.forEach(s => specByKey[s.key] = s);
+  const rows = document.querySelectorAll('#rubric .qrow');
+  if (!rows.length){ alert('请先生成评分表并录入评分标准'); return; }
   const items = [];
-  document.querySelectorAll('#dims textarea').forEach(t => {
-    const k = t.getAttribute('data-key');
-    const q = document.querySelector(`input[data-q="${k}"]`);
-    const base = { dimension_key: k, question: q ? q.value.trim() : '', answer_transcript: t.value.trim() };
-    if (MODE === 'import'){
-      const s = specByKey[k] || {};
-      base.dimension_name = s.name || k;
-      base.modality = s.modality || 'qa';
-      base.max_score = s.max_score || 10;
-    }
-    items.push(base);
+  rows.forEach((row,i) => {
+    items.push({
+      dimension_key: 'dim_' + (i+1),
+      dimension_name: (row.querySelector('[data-name]').value || ('第'+(i+1)+'题')).trim(),
+      modality: 'qa',
+      max_score: parseInt(row.querySelector('[data-max]').value||'0',10) || 0,
+      question: row.querySelector('[data-q]').value.trim(),
+      answer_transcript: row.querySelector('[data-ans]').value.trim(),
+      reference_answer: row.querySelector('[data-std]').value.trim() || null,
+    });
   });
-  if (!items.length){ alert('没有可评分的维度'); return; }
-  const candidate = { name: name.value, candidate_no: no.value, position: MODE==='bank' ? document.getElementById('position').value : (IMPORTED ? IMPORTED.paper_name : 'imported') };
-  const url = MODE === 'import' ? '/interviews/custom' : '/interviews';
+  if (items.some(it => it.max_score <= 0)){ alert('每题满分需为正整数'); return; }
+  const candidate = { name: name.value, candidate_no: no.value, position: IMPORTED ? IMPORTED.paper_name : '整段面试', language: language() };
   const res = document.getElementById('result');
   res.innerHTML = '<div class="empty">AI 评分中…</div>';
-  const r = await (await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({candidate, items})})).json();
-  render(r);
+  try {
+    const r = await (await fetch('/interviews/custom', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({candidate, items})})).json();
+    render(r);
+  } catch(e){ res.innerHTML = '<div class="empty">评分出错：' + e.message + '</div>'; }
 }
 
 function render(r){
   const res = document.getElementById('result');
+  if (!r || !r.dimensions){ res.innerHTML = '<div class="empty">评分失败：' + (r && r.detail ? r.detail : '未知错误') + '</div>'; return; }
   const ratio = r.total_score / r.max_total;
   let html = `<div class="row"><div class="total">${r.total_score}<small>/${r.max_total}</small></div>
     <span class="badge ${levelClass(ratio)}">${r.overall_level}</span>
@@ -270,7 +299,7 @@ function render(r){
     if (d.question) html += `<div class="small">题目: ${d.question}</div>`;
     html += `<div class="bar"><i style="width:${rt*100}%"></i></div>
       <div class="small">${d.rationale||''}</div>`;
-    (d.removed_segments||[]).forEach(s => html += `<div class="rm">✂ 已剔除考官读题: ${s.text}</div>`);
+    (d.removed_segments||[]).forEach(s => html += `<div class="rm">✂ 已剔除${s.reason==='examiner_prompt'?'无关提示':'考官读题'}: ${s.text}</div>`);
     (d.deductions||[]).forEach(x => html += `<div class="ded">− ${x.points}：${x.reason}<br><span class="small">证据: ${x.evidence||''}</span></div>`);
     (d.evidence||[]).forEach(x => html += `<div class="ev">[${x.type}] ${x.content} <span class="small">${x.ref||''}</span></div>`);
     html += `</div>`;
@@ -278,13 +307,13 @@ function render(r){
   res.innerHTML = html;
 }
 
-document.getElementById('run').onclick = run;
-document.getElementById('demo').onclick = fillDemo;
-document.getElementById('srcBank').onclick = () => switchMode('bank');
-document.getElementById('srcImport').onclick = () => switchMode('import');
+document.getElementById('transcribe').onclick = transcribeFull;
 document.getElementById('loadZh').onclick = () => loadSample('zh');
 document.getElementById('loadVi').onclick = () => loadSample('vi');
 document.getElementById('parsePaper').onclick = parsePaper;
+document.getElementById('buildTable').onclick = buildTable;
+document.getElementById('demoStd').onclick = fillDemoStd;
+document.getElementById('run').onclick = run;
 init();
 </script>
 </body>

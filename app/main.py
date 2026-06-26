@@ -6,7 +6,9 @@ REST API:
 - GET  /positions/{id}/paper  按岗位生成试卷（每位考生题目可不同）
 - GET  /kb/search?q=...     RAG 知识库检索
 - POST /transcribe         上传音/视频，调用百炼 Paraformer 转写为文本
+- POST /transcribe_full    上传整段面试录音，转写并按题前停顿切分为多段回答
 - POST /interviews         创建面试 + 提交评分（一步式，便于 demo）
+- POST /interviews/custom  基于导入试卷 + 手动评分维度评分（动态维度）
 - GET  /interviews/{id}    获取评分结果
 - GET  /interviews/{id}/evidence  获取证据链
 - GET  /interviews/{id}/report    生成评分报告（Markdown）
@@ -133,6 +135,25 @@ async def transcribe(
     if not data:
         raise HTTPException(status_code=400, detail="上传文件为空")
     return asr.transcribe(data, file.filename or "upload", language=language)
+
+
+@app.post("/transcribe_full")
+async def transcribe_full(
+    file: UploadFile = File(..., description="一名考生整段面试的录音/录像文件"),
+    language: str = Form("zh", description="语言：zh|vi|en"),
+    pause_ms: int = Form(2000, description="题前停顿阈值（毫秒），超过则切分为新题"),
+) -> Dict[str, Any]:
+    """上传一名考生整段面试录音/录像，转写并按「题前明显停顿」切分为多段回答。
+
+    返回 segments（按题目顺序），每段为原始转写（可能含考官读题/口令）；剔除
+    与答题无关内容、仅留考生回答在评分阶段由后端自动完成。
+    """
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="上传文件为空")
+    return asr.transcribe_segments(
+        data, file.filename or "upload", language=language, pause_ms=pause_ms
+    )
 
 
 @app.post("/interviews", response_model=ScoreResult)

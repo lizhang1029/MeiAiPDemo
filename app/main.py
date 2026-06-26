@@ -27,9 +27,22 @@ from fastapi.responses import HTMLResponse, PlainTextResponse
 from .core.asr import ASRClient
 from .core.knowledge_base import KnowledgeBase
 from .core.paper_import import build_rubric, parse_exam_paper
+from .core.positions_store import (
+    delete_position,
+    get_saved_position,
+    list_saved_positions,
+    save_position,
+)
 from .core.question_bank import get_paper, list_positions
 from .core.rubric import rubric_to_dict
-from .core.schemas import CustomScoreRequest, ScoreRequest, ScoreResult
+from .core.rubric_parse import parse_rubric_text
+from .core.schemas import (
+    CustomScoreRequest,
+    RubricParseRequest,
+    SavePositionRequest,
+    ScoreRequest,
+    ScoreResult,
+)
 from .core.scoring_engine import ScoringEngine
 
 _EXAMPLES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "examples")
@@ -61,6 +74,62 @@ def get_rubric() -> Dict[str, Any]:
 @app.get("/positions")
 def get_positions() -> Dict[str, Any]:
     return {"positions": list_positions()}
+
+
+# --------------------------------------------------------------------------- #
+# 岗位（含评分表）本地持久化：选择/新建/保存/删除
+# --------------------------------------------------------------------------- #
+@app.get("/positions/saved")
+def get_saved_positions() -> Dict[str, Any]:
+    """列出本地已保存岗位（含评分表）。"""
+    return {"positions": list_saved_positions()}
+
+
+@app.post("/positions/saved")
+def create_saved_position(req: SavePositionRequest) -> Dict[str, Any]:
+    """新建/更新岗位并解析其评分表，持久化为本地 JSON。"""
+    if not req.name.strip():
+        raise HTTPException(status_code=400, detail="岗位名称不能为空")
+    return save_position(req.name.strip(), req.language, req.rubric_text, req.id)
+
+
+@app.get("/positions/saved/{position_id}")
+def read_saved_position(position_id: str) -> Dict[str, Any]:
+    pos = get_saved_position(position_id)
+    if not pos:
+        raise HTTPException(status_code=404, detail="未找到该岗位")
+    return pos
+
+
+@app.delete("/positions/saved/{position_id}")
+def remove_saved_position(position_id: str) -> Dict[str, Any]:
+    if not delete_position(position_id):
+        raise HTTPException(status_code=404, detail="未找到该岗位")
+    return {"deleted": position_id}
+
+
+# --------------------------------------------------------------------------- #
+# 评分表文本解析
+# --------------------------------------------------------------------------- #
+@app.post("/rubrics/parse")
+def parse_rubric(req: RubricParseRequest) -> Dict[str, Any]:
+    """解析粘贴的整张评分表文本，返回结构化评分项。"""
+    parsed = parse_rubric_text(req.text)
+    if not parsed["items"]:
+        raise HTTPException(status_code=400, detail="未从文本中解析出任何评分项，请检查格式")
+    return parsed
+
+
+@app.get("/rubrics/samples")
+def get_rubric_samples() -> Dict[str, Any]:
+    """返回内置评分表文本样例（外语导游评分表）。"""
+    samples: Dict[str, str] = {}
+    for key, fname in (("foreign", "sample_rubric_foreign.txt"),):
+        path = os.path.join(_EXAMPLES_DIR, fname)
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                samples[key] = f.read()
+    return {"samples": samples}
 
 
 @app.get("/positions/{position_id}/paper")

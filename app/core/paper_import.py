@@ -18,7 +18,7 @@ import re
 from html import unescape
 from typing import Any, Dict, List, Optional, Tuple
 
-from .rubric import Dimension, ScoreLevel
+from .rubric import Dimension, ScoreItem, ScoreLevel
 
 
 # group 名称 → (评分维度 key, 模态)。同义名做归一处理。
@@ -165,24 +165,65 @@ def _proportional_levels(max_score: int) -> List[ScoreLevel]:
     ]
 
 
-def make_dimension(key: str, name: str, max_score: int, modality: str = "qa") -> Dimension:
-    """由维度规格构造用于评分的 Dimension（动态满分 + 比例等级）。"""
+def make_dimension(
+    key: str,
+    name: str,
+    max_score: int,
+    modality: str = "qa",
+    *,
+    weight: float = 1.0,
+    scoring_source: str = "per_question",
+    levels: Optional[List[Dict[str, Any]]] = None,
+    criteria: Optional[List[Dict[str, Any]]] = None,
+) -> Dimension:
+    """由维度规格构造用于评分的 Dimension。
+
+    levels/criteria 来自录入评分表的解析结果（见 rubric_parse）；未提供时
+    回退为按满分比例生成的等级区间。
+    """
     ms = int(max_score)
+    score_levels = (
+        [ScoreLevel(l.get("name", ""), int(l.get("min", 0)), int(l.get("max", 0)), l.get("desc", "")) for l in levels]
+        if levels
+        else _proportional_levels(ms)
+    )
+    score_items = (
+        [
+            ScoreItem(
+                c.get("key", f"c_{i + 1}"),
+                c.get("name", ""),
+                int(c.get("points", 0)),
+                [c["desc"]] if c.get("desc") else [],
+            )
+            for i, c in enumerate(criteria)
+        ]
+        if criteria
+        else []
+    )
     return Dimension(
         key=key,
         name=name,
         max_score=ms,
         modality=modality or "qa",
-        items=[],
-        levels=_proportional_levels(ms),
+        items=score_items,
+        levels=score_levels,
+        weight=float(weight or 1.0),
+        scoring_source=scoring_source or "per_question",
     )
 
 
 def build_rubric(dimensions: List[Dict[str, Any]]) -> Dict[str, Dimension]:
-    """由动态试卷的维度列表构造 {key: Dimension} 评分表。"""
+    """由动态试卷/评分表的维度列表构造 {key: Dimension} 评分表。"""
     rubric: Dict[str, Dimension] = {}
     for d in dimensions:
         rubric[d["dimension_key"]] = make_dimension(
-            d["dimension_key"], d.get("dimension_name", d["dimension_key"]), d["max_score"], d.get("modality", "qa")
+            d["dimension_key"],
+            d.get("dimension_name", d["dimension_key"]),
+            d["max_score"],
+            d.get("modality", "qa"),
+            weight=d.get("weight", 1.0),
+            scoring_source=d.get("scoring_source", "per_question"),
+            levels=d.get("levels"),
+            criteria=d.get("criteria"),
         )
     return rubric

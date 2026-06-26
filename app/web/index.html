@@ -25,11 +25,14 @@
     .grid3 { display:grid; grid-template-columns: 1fr 90px; gap:8px; }
     button { background:var(--accent); color:#06283a; border:none; border-radius:8px; padding:10px 18px; font-weight:600; cursor:pointer; font-size:14px; }
     button.ghost { background:transparent; color:var(--accent); border:1px solid var(--accent); }
+    button:disabled { opacity:.45; cursor:not-allowed; }
     .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
     .total { font-size:34px; font-weight:700; }
     .total small { font-size:14px; color:var(--muted); }
     .badge { font-size:12px; padding:2px 8px; border-radius:6px; }
     .b-good{background:rgba(34,197,94,.15);color:var(--good);} .b-mid{background:rgba(245,158,11,.15);color:var(--warn);} .b-bad{background:rgba(239,68,68,.15);color:var(--bad);}
+    .tag { font-size:11px; padding:1px 7px; border-radius:6px; background:#334155; color:var(--muted); }
+    .tag-pq{background:rgba(56,189,248,.15);color:var(--accent);} .tag-whole{background:rgba(245,158,11,.15);color:var(--warn);} .tag-manual{background:rgba(148,163,184,.18);color:var(--muted);}
     .dim-score { border-bottom:1px solid #283548; padding:12px 0; }
     .dim-score .head { display:flex; justify-content:space-between; align-items:center; }
     .bar { height:6px; background:#0f172a; border-radius:6px; overflow:hidden; margin:8px 0; }
@@ -45,67 +48,101 @@
     a { color:var(--accent); }
     .hint { font-size:11px; color:var(--muted); margin:4px 0 0; }
     details summary { cursor:pointer; color:var(--accent); font-size:12px; margin-top:8px; }
+    table.rubric { width:100%; border-collapse:collapse; font-size:12px; margin-top:8px; }
+    table.rubric th, table.rubric td { border:1px solid #334155; padding:6px 8px; text-align:left; vertical-align:top; }
+    table.rubric th { color:var(--muted); font-weight:600; }
   </style>
 </head>
 <body>
   <header>
-    <h1>🎤 AI 辅助导游面试评分系统 <span class="small">Demo · 整段面试评分</span></h1>
+    <h1>🎤 AI 辅助导游面试评分系统 <span class="small">Demo · 岗位评分表 · 整段面试</span></h1>
     <span class="mode" id="mode">engine: …</span>
   </header>
 
   <div class="layout">
     <div class="card">
-      <h2>整段面试 · 分步评分向导</h2>
+      <h2>分步评分向导：岗位 → 评分表 → 试题 → 音频 → 对应 → 评分</h2>
 
       <div class="row">
         <div style="flex:1"><label>考生姓名</label><input id="name" value="张三" /></div>
         <div style="flex:1"><label>考号</label><input id="no" value="GX2026-001" /></div>
         <div style="width:110px"><label>语言</label>
-          <select id="language"><option value="zh">普通话</option><option value="vi">越南语</option><option value="en">英语</option></select>
+          <select id="language"><option value="zh">普通话</option><option value="vi">越南语</option><option value="en">英语</option><option value="foreign">外语</option></select>
         </div>
       </div>
 
+      <!-- ① 岗位 -->
       <div class="step">
-        <p class="st">① 上传整段面试录音并按题分段</p>
-        <p class="hint">上传一名考生整场面试的一个音频/视频文件。系统转写后，会按「每题作答前的明显停顿」自动切分为多段，按题目顺序对应各题回答。</p>
+        <p class="st">① 选择或新建岗位</p>
+        <p class="hint">岗位连同其评分表保存在本地（不依赖数据库），可重复使用。选择已有岗位会自动载入其评分表。</p>
+        <div class="row" style="margin-top:8px">
+          <div style="flex:1"><label style="margin:0">已保存岗位</label>
+            <select id="posSelect"><option value="">— 新建岗位 —</option></select>
+          </div>
+          <button class="ghost" id="reloadPos" style="align-self:flex-end">刷新</button>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <div style="flex:1"><label style="margin:0">岗位名称</label><input id="posName" placeholder="如：外语导游" /></div>
+          <button id="savePos" style="align-self:flex-end">保存岗位+评分表</button>
+        </div>
+        <div class="small" id="posStatus" style="margin-top:6px"></div>
+      </div>
+
+      <!-- ② 评分表 -->
+      <div class="step">
+        <p class="st">② 录入并解析评分表（文本）</p>
+        <p class="hint">粘贴整张评分表（评分项-满分-【权重】+ 子项 + 优秀/良好/合格/不合格 或 分数档位）。<b>评分维度、满分、评分标准以此为准，总分=各项得分相加。</b></p>
+        <textarea id="rubricText" style="min-height:120px" placeholder="粘贴评分表文本，或点下方按钮载入外语评分表样例。"></textarea>
+        <div class="row" style="margin-top:8px">
+          <button class="ghost" id="loadRubric">载入外语评分表样例</button>
+          <button id="parseRubric">解析评分表</button>
+          <span class="small" id="rubricInfo" style="margin-left:auto"></span>
+        </div>
+        <div id="rubricView"></div>
+      </div>
+
+      <!-- ③ 试题 -->
+      <div class="step">
+        <p class="st">③ 录入并解析试题 JSON（仅取题干）</p>
+        <textarea id="paperJson" style="min-height:80px" placeholder="粘贴考务接口下发的试题 JSON（sections → groups → items），或点下方按钮载入样例。仅提取各题题干，按顺序对应「按题评分」的评分项。"></textarea>
+        <div class="row" style="margin-top:8px">
+          <button class="ghost" id="loadZh">载入普通话样例</button>
+          <button class="ghost" id="loadVi">载入越南语样例</button>
+          <button id="parsePaper">解析题干</button>
+        </div>
+        <p class="hint" id="paperInfo">导入的 JSON 只提供题干。</p>
+      </div>
+
+      <!-- ④ 音频 -->
+      <div class="step">
+        <p class="st">④ 导入并解析音频（按题前停顿分段）</p>
+        <p class="hint">上传一名考生整场面试的一个音频/视频文件。系统转写后按「每题作答前的明显停顿」自动切分为多段，按题目顺序对应各题回答。</p>
         <div class="row" style="margin-top:8px">
           <input type="file" id="fullFile" accept="audio/*,video/*" style="flex:1;font-size:12px;padding:4px" />
-          <div style="width:160px"><label style="margin:0">题前停顿阈值(ms)</label><input id="pauseMs" type="number" value="2000" min="500" step="100" /></div>
+          <div style="width:150px"><label style="margin:0">题前停顿阈值(ms)</label><input id="pauseMs" type="number" value="2000" min="500" step="100" /></div>
         </div>
-        <div class="row" style="margin-top:8px">
-          <button id="transcribe">🎙 转写并分段</button>
-        </div>
+        <div class="row" style="margin-top:8px"><button id="transcribe">🎙 转写并分段</button></div>
         <div class="small" id="asrStatus" style="margin-top:6px"></div>
         <div id="segView"></div>
         <details id="fullView" style="display:none"><summary>查看整段原始转写</summary>
           <textarea id="fullText" readonly style="min-height:90px;margin-top:6px"></textarea></details>
       </div>
 
+      <!-- ⑤ 对应 -->
       <div class="step">
-        <p class="st">② 导入试题 JSON（仅取题干）</p>
-        <textarea id="paperJson" style="min-height:90px" placeholder="粘贴考务接口下发的试题 JSON（结构 sections → groups → items），或点下方按钮载入样例。仅提取各题题干，按顺序与各段回答、各维度对齐。"></textarea>
+        <p class="st">⑤ 音频段 ↔ 试题 / 评分项 对应</p>
+        <p class="hint">「按题评分」项与试题、录音分段 1:1 对应（可调整）。「整场评分」项用全部转写、「人工录入」项由评委直接填分。</p>
         <div class="row" style="margin-top:8px">
-          <button class="ghost" id="loadZh">载入普通话样例</button>
-          <button class="ghost" id="loadVi">载入越南语样例</button>
-          <button id="parsePaper">解析题干</button>
+          <button class="ghost" id="buildMap">生成对应表</button>
+          <span class="small" id="mapInfo" style="margin-left:auto"></span>
         </div>
-        <p class="hint" id="paperInfo">导入的 JSON 只提供题干；评分维度、满分与评分标准以下方手动录入为准。</p>
+        <div id="mapView" style="margin-top:10px"><div class="empty">完成 ②（评分表）后，点「生成对应表」。</div></div>
       </div>
 
+      <!-- ⑥ 评分 -->
       <div class="step">
-        <p class="st">③ 录入各维度评分标准与满分</p>
-        <p class="hint">每行 = 一题：题干只读、该题考生回答自动回填（可改）；维度名 / 满分 / 评分标准由你手动录入。<b>总分以评分表合计为准。</b></p>
-        <div class="row" style="margin-top:8px">
-          <button class="ghost" id="buildTable">按题目数生成评分表</button>
-          <button class="ghost" id="demoStd">填充示例评分标准</button>
-          <span class="small" id="totalInfo" style="margin-left:auto"></span>
-        </div>
-        <div id="rubric" style="margin-top:10px"><div class="empty">完成 ① / ② 后，点「按题目数生成评分表」。</div></div>
-      </div>
-
-      <div class="step">
-        <p class="st">④ 开始评分</p>
-        <p class="hint">评分时自动剔除每段中混入的考官读题与「可以开始作答 / 时间到 / 下一题」等无关提示，仅对考生回答打分；所有分数为整数，并给出剔除项与证据链。</p>
+        <p class="st">⑥ 开始 AI 评分</p>
+        <p class="hint">按评分表逐项打分：按题评分项剔除考官读题与「可以开始作答/时间到/下一题」等无关提示，仅对考生回答打分；分数为整数，给出剔除项与证据链。</p>
         <button id="run" style="margin-top:8px">开始 AI 评分</button>
       </div>
     </div>
@@ -117,202 +154,247 @@
   </div>
 
 <script>
-let SEGMENTS = [];     // 整段录音分段结果 [{index, begin_ms, end_ms, text}]
-let QSTEMS = [];       // 导入试题题干 [{question, images}]
-let IMPORTED = null;   // 导入解析结果
-let SAMPLES = null;    // 样例缓存
+let RUBRIC = null;     // 解析后的评分表 {rubric_name,total_max,items:[...]}
+let SEGMENTS = [];     // 整段录音分段 [{index,begin_ms,end_ms,text}]
+let QSTEMS = [];       // 导入试题题干 [{question,images,name}]
+let IMPORTED = null;   // 试题解析结果
+let SAMPLES = null;    // 试题样例缓存
+let RUBRIC_SAMPLES = null;
+
+const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+function language(){ return document.getElementById('language').value; }
+function fmtMs(ms){ if (ms==null) return ''; const s=Math.round(ms/1000); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); }
+const srcTag = s => s==='whole'?'<span class="tag tag-whole">整场评分</span>':s==='manual'?'<span class="tag tag-manual">人工录入</span>':'<span class="tag tag-pq">按题评分</span>';
 
 async function init(){
   const h = await (await fetch('/health')).json();
   document.getElementById('mode').textContent = 'engine: ' + h.engine_mode;
+  await loadPositions();
 }
 
-function language(){ return document.getElementById('language').value; }
+// ---------- ① 岗位 ----------
+async function loadPositions(){
+  const sel = document.getElementById('posSelect');
+  const cur = sel.value;
+  const j = await (await fetch('/positions/saved')).json();
+  sel.innerHTML = '<option value="">— 新建岗位 —</option>' +
+    (j.positions||[]).map(p => `<option value="${esc(p.id)}">${esc(p.name)}（${p.item_count}项/${p.total_max}分）</option>`).join('');
+  sel.value = cur;
+}
+async function onSelectPosition(){
+  const id = document.getElementById('posSelect').value;
+  if (!id){ document.getElementById('posName').value=''; return; }
+  const p = await (await fetch('/positions/saved/'+encodeURIComponent(id))).json();
+  document.getElementById('posName').value = p.name || '';
+  document.getElementById('language').value = p.language || 'zh';
+  document.getElementById('rubricText').value = p.rubric_text || '';
+  RUBRIC = p.rubric && p.rubric.items && p.rubric.items.length ? p.rubric : null;
+  renderRubric();
+  document.getElementById('posStatus').textContent = `已载入岗位「${p.name}」及其评分表。`;
+}
+async function savePosition(){
+  const name = document.getElementById('posName').value.trim();
+  if (!name){ alert('请填写岗位名称'); return; }
+  const body = {
+    id: document.getElementById('posSelect').value || null,
+    name, language: language(),
+    rubric_text: document.getElementById('rubricText').value,
+  };
+  const r = await fetch('/positions/saved', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  const j = await r.json();
+  if (!r.ok){ document.getElementById('posStatus').textContent = '保存失败：'+(j.detail||r.status); return; }
+  RUBRIC = j.rubric && j.rubric.items && j.rubric.items.length ? j.rubric : RUBRIC;
+  document.getElementById('posStatus').textContent = `✅ 已保存岗位「${j.name}」（${(j.rubric.items||[]).length}项/${j.rubric.total_max}分）。`;
+  await loadPositions();
+  document.getElementById('posSelect').value = j.id;
+  renderRubric();
+}
 
-function fmtMs(ms){ if (ms==null) return ''; const s=Math.round(ms/1000); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); }
+// ---------- ② 评分表 ----------
+async function loadRubricSample(){
+  if (!RUBRIC_SAMPLES) RUBRIC_SAMPLES = (await (await fetch('/rubrics/samples')).json()).samples;
+  document.getElementById('rubricText').value = RUBRIC_SAMPLES.foreign || '';
+}
+async function parseRubric(){
+  const text = document.getElementById('rubricText').value.trim();
+  if (!text){ alert('请先粘贴或载入评分表文本'); return; }
+  const r = await fetch('/rubrics/parse', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({text})});
+  const j = await r.json();
+  if (!r.ok){ alert('解析失败：'+(j.detail||r.status)); return; }
+  RUBRIC = j;
+  renderRubric();
+}
+function renderRubric(){
+  const box = document.getElementById('rubricView');
+  const info = document.getElementById('rubricInfo');
+  if (!RUBRIC || !RUBRIC.items || !RUBRIC.items.length){ box.innerHTML=''; info.textContent=''; return; }
+  const pq = RUBRIC.items.filter(i=>i.source==='per_question').length;
+  info.textContent = `共 ${RUBRIC.items.length} 项 · 满分合计 ${RUBRIC.total_max} · 按题评分 ${pq} 项`;
+  box.innerHTML = '<table class="rubric"><tr><th>评分项</th><th>满分</th><th>评分来源</th><th>等级/标准</th></tr>' +
+    RUBRIC.items.map(it => {
+      const lv = (it.levels||[]).map(l=>`${l.name}(${l.min}-${l.max})`).join('、') || (it.standards_text||'').slice(0,40);
+      return `<tr><td>${esc(it.name)}</td><td>${it.max_score}</td><td>${srcTag(it.source)}</td><td class="small">${esc(lv)}</td></tr>`;
+    }).join('') + '</table>';
+}
 
+// ---------- ③ 试题 ----------
+async function ensureSamples(){ if (!SAMPLES) SAMPLES=(await (await fetch('/papers/samples')).json()).samples; return SAMPLES; }
+async function loadSample(key){ const s=await ensureSamples(); if(!s[key]){alert('未找到样例');return;} document.getElementById('paperJson').value=JSON.stringify(s[key],null,2); }
+async function parsePaper(){
+  const txt = document.getElementById('paperJson').value.trim();
+  if (!txt){ alert('请先粘贴或载入试题 JSON'); return; }
+  let data; try { data=JSON.parse(txt); } catch(e){ alert('JSON 解析失败：'+e.message); return; }
+  const r = await fetch('/papers/import', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)});
+  if (!r.ok){ const e=await r.json().catch(()=>({})); alert('导入失败：'+(e.detail||r.status)); return; }
+  IMPORTED = await r.json();
+  QSTEMS = (IMPORTED.dimensions||[]).map(d=>({question:d.question||'', images:d.images||[], name:d.dimension_name||''}));
+  document.getElementById('paperInfo').textContent = `已解析：${IMPORTED.paper_name} · 取得 ${QSTEMS.length} 道题干（与「按题评分」项按顺序对应）。`;
+  buildMap();
+}
+
+// ---------- ④ 音频 ----------
 async function transcribeFull(){
   const fi = document.getElementById('fullFile');
   if (!fi.files.length){ alert('请先选择整段面试的音/视频文件'); return; }
   const fd = new FormData();
-  fd.append('file', fi.files[0]);
-  fd.append('language', language());
+  fd.append('file', fi.files[0]); fd.append('language', language());
   fd.append('pause_ms', document.getElementById('pauseMs').value || '2000');
   const status = document.getElementById('asrStatus');
   status.textContent = '🔄 转写并分段中，请稍候…';
   try {
     const r = await fetch('/transcribe_full', {method:'POST', body: fd});
     const j = await r.json();
-    if (!r.ok){ status.textContent = '转写失败：' + (j.detail || r.status); return; }
+    if (!r.ok){ status.textContent = '转写失败：'+(j.detail||r.status); return; }
     SEGMENTS = j.segments || [];
-    status.textContent = `✅ 已转写并分段（${j.engine}${j.is_video?' · 视频抽音轨':''}）· 共 ${SEGMENTS.length} 段` + (j.note ? (' · ' + j.note) : '');
+    status.textContent = `✅ 已转写并分段（${j.engine}${j.is_video?' · 视频抽音轨':''}）· 共 ${SEGMENTS.length} 段` + (j.note?(' · '+j.note):'');
     renderSegments();
     document.getElementById('fullText').value = j.text || '';
     document.getElementById('fullView').style.display = '';
-    buildTable();
-  } catch(e){ status.textContent = '转写出错：' + e.message; }
+    buildMap();
+  } catch(e){ status.textContent = '转写出错：'+e.message; }
 }
-
 function renderSegments(){
   const box = document.getElementById('segView');
   if (!SEGMENTS.length){ box.innerHTML=''; return; }
   box.innerHTML = SEGMENTS.map(s =>
-    `<div class="seg"><div class="sh">第 ${s.index+1} 段 · ${fmtMs(s.begin_ms)}–${fmtMs(s.end_ms)}（含考官读题/提示，评分时自动剔除）</div>${(s.text||'').replace(/</g,'&lt;')}</div>`
+    `<div class="seg"><div class="sh">第 ${s.index+1} 段 · ${fmtMs(s.begin_ms)}–${fmtMs(s.end_ms)}（含考官读题/提示，评分时自动剔除）</div>${esc(s.text)}</div>`
   ).join('');
 }
 
-async function ensureSamples(){
-  if (!SAMPLES) SAMPLES = (await (await fetch('/papers/samples')).json()).samples;
-  return SAMPLES;
+// ---------- ⑤ 对应 ----------
+function segOptions(selected){
+  let opts = '<option value="">（无对应录音段）</option>';
+  SEGMENTS.forEach(s => { opts += `<option value="${s.index}" ${s.index===selected?'selected':''}>第 ${s.index+1} 段 · ${fmtMs(s.begin_ms)}–${fmtMs(s.end_ms)}</option>`; });
+  return opts;
 }
-async function loadSample(key){
-  const s = await ensureSamples();
-  if (!s[key]){ alert('未找到样例'); return; }
-  document.getElementById('paperJson').value = JSON.stringify(s[key], null, 2);
-}
-
-async function parsePaper(){
-  const txt = document.getElementById('paperJson').value.trim();
-  if (!txt){ alert('请先粘贴或载入试题 JSON'); return; }
-  let data;
-  try { data = JSON.parse(txt); } catch(e){ alert('JSON 解析失败：' + e.message); return; }
-  const r = await fetch('/papers/import', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)});
-  if (!r.ok){ const e = await r.json().catch(()=>({})); alert('导入失败：' + (e.detail || r.status)); return; }
-  IMPORTED = await r.json();
-  QSTEMS = (IMPORTED.dimensions||[]).map(d => ({ question:d.question||'', images:d.images||[], name:d.dimension_name||'' }));
-  if (language()==='zh' && (IMPORTED.language==='vi')) {} // 语言以上方选择为准
-  document.getElementById('paperInfo').textContent =
-    `已解析：${IMPORTED.paper_name} · 取得 ${QSTEMS.length} 道题干（维度/满分/评分标准请在下方手动录入）。`;
-  buildTable();
-}
-
-// 读取当前已填值，重建表时尽量保留
-function snapshotRows(){
-  const map = {};
-  document.querySelectorAll('#rubric .qrow').forEach(row => {
-    const i = row.getAttribute('data-row');
-    map[i] = {
-      name: row.querySelector('[data-name]').value,
-      max: row.querySelector('[data-max]').value,
-      std: row.querySelector('[data-std]').value,
-      ans: row.querySelector('[data-ans]').value,
-    };
-  });
-  return map;
-}
-
-function buildTable(){
-  const prev = snapshotRows();
-  const n = Math.max(QSTEMS.length, SEGMENTS.length);
-  const box = document.getElementById('rubric');
-  if (!n){ box.innerHTML = '<div class="empty">完成 ① 上传分段 或 ② 导入题干后，点「按题目数生成评分表」。</div>'; updateTotal(); return; }
-  let html = '';
-  for (let i=0;i<n;i++){
-    const q = QSTEMS[i] || {question:'', images:[], name:''};
-    const seg = SEGMENTS[i];
-    const p = prev[i] || {};
-    const name = p.name ?? (q.name || ('第'+(i+1)+'题'));
-    const max = p.max ?? 20;
-    const std = p.std ?? '';
-    const ans = (p.ans!==undefined) ? p.ans : (seg ? seg.text : '');
-    const imgs = (q.images||[]).map((u,k)=>`<a class="img" href="${u}" target="_blank">🖼 题目图片${(q.images.length>1)?(' '+(k+1)):''}</a>`).join(' ');
-    html += `<div class="qrow" data-row="${i}">
-      <div class="qt"><span>第 ${i+1} 题</span><span class="small">${seg?('对应录音第 '+(i+1)+' 段'):'（无对应录音段）'}</span></div>
-      <label>题干（来自导入 JSON，只读）</label>
-      <textarea data-q readonly placeholder="未导入题干，可仅按回答与评分标准评分">${(q.question||'').replace(/</g,'&lt;')}</textarea>
-      ${imgs?`<div style="margin-top:4px">${imgs}</div>`:''}
-      <div class="grid3" style="margin-top:6px">
-        <div><label style="margin:0">评分维度名</label><input data-name value="${String(name).replace(/"/g,'&quot;')}" /></div>
-        <div><label style="margin:0">满分</label><input data-max type="number" min="1" value="${max}" /></div>
-      </div>
-      <label>评分标准 / 评分要点</label>
-      <textarea data-std placeholder="录入该维度评分标准，如：要点完整(8)、讲解逻辑(6)、表达流畅(6)…">${String(std).replace(/</g,'&lt;')}</textarea>
-      <label>该题考生回答（自动回填，可修改；含读题/提示将自动剔除）</label>
-      <textarea data-ans placeholder="该题考生回答转写">${(ans||'').replace(/</g,'&lt;')}</textarea>
-    </div>`;
+function buildMap(){
+  const box = document.getElementById('mapView');
+  if (!RUBRIC || !RUBRIC.items || !RUBRIC.items.length){
+    box.innerHTML = '<div class="empty">完成 ②（评分表）后，点「生成对应表」。</div>'; document.getElementById('mapInfo').textContent=''; return;
   }
+  let pqIdx = -1;
+  const html = RUBRIC.items.map((it, idx) => {
+    let inner = '';
+    if (it.source === 'per_question'){
+      pqIdx++;
+      const q = QSTEMS[pqIdx] || {question:'', images:[]};
+      const imgs = (q.images||[]).map((u,k)=>`<a class="img" href="${esc(u)}" target="_blank">🖼 题目图片${(q.images.length>1)?(' '+(k+1)):''}</a>`).join(' ');
+      inner = `<label>题干（来自导入 JSON，只读）</label>
+        <textarea data-q readonly placeholder="未导入题干，可仅按回答与评分标准评分">${esc(q.question)}</textarea>
+        ${imgs?`<div style="margin-top:4px">${imgs}</div>`:''}
+        <label>对应录音段</label><select data-seg>${segOptions(pqIdx<SEGMENTS.length?pqIdx:'')}</select>
+        <label>该题考生回答（自动回填，可修改；含读题/提示将自动剔除）</label>
+        <textarea data-ans placeholder="该题考生回答转写">${esc(SEGMENTS[pqIdx]?SEGMENTS[pqIdx].text:'')}</textarea>`;
+    } else if (it.source === 'whole'){
+      inner = `<p class="hint">整场评分：使用全部转写（${SEGMENTS.length} 段）作为依据，不针对单题。</p>`;
+    } else {
+      inner = `<label>人工录入分数（0 ~ ${it.max_score}）</label><input data-manual type="number" min="0" max="${it.max_score}" value="0" />`;
+    }
+    return `<div class="qrow" data-item="${idx}" data-source="${it.source}" data-max="${it.max_score}">
+      <div class="qt"><span>${esc(it.name)} · 满分 ${it.max_score}</span>${srcTag(it.source)}</div>
+      ${inner}</div>`;
+  }).join('');
   box.innerHTML = html;
-  box.querySelectorAll('[data-max]').forEach(el => el.addEventListener('input', updateTotal));
-  updateTotal();
+  box.querySelectorAll('select[data-seg]').forEach(sel => sel.addEventListener('change', onSegChange));
+  const pq = RUBRIC.items.filter(i=>i.source==='per_question').length;
+  let note = `按题评分 ${pq} 项 · 录音 ${SEGMENTS.length} 段 · 题干 ${QSTEMS.length} 道`;
+  if (QSTEMS.length && QSTEMS.length !== pq) note += ` ⚠ 题干数与按题评分项数不一致`;
+  document.getElementById('mapInfo').textContent = note;
+}
+function onSegChange(e){
+  const row = e.target.closest('.qrow');
+  const ans = row.querySelector('[data-ans]');
+  const v = e.target.value;
+  if (v!=='' && SEGMENTS[+v]) ans.value = SEGMENTS[+v].text;
 }
 
-function updateTotal(){
-  let total = 0, rows = 0;
-  document.querySelectorAll('#rubric [data-max]').forEach(el => { total += parseInt(el.value||'0',10)||0; rows++; });
-  document.getElementById('totalInfo').textContent = rows ? `共 ${rows} 题 · 满分合计 ${total}` : '';
-}
-
-const DEMO_STD = [
-  '要点完整、覆盖关键信息(8)；讲解逻辑清晰(6)；语言流畅、表达得体(6)。',
-  '景区特色与文化内涵准确(8)；动线合理(6)；讲解生动、富感染力(6)。',
-  '流程/规范要点齐全(4)；条理清晰(3)；表述准确(3)。',
-  '处置合法合规、切实可行(4)；安全优先(3)；应变灵活(3)。',
-  '知识准确、举例恰当(4)；信息量充分(3)；表达清晰(3)。',
-];
-function fillDemoStd(){
-  document.querySelectorAll('#rubric .qrow').forEach((row,i) => {
-    const std = row.querySelector('[data-std]');
-    if (std && !std.value) std.value = DEMO_STD[i % DEMO_STD.length];
-  });
-}
-
+// ---------- ⑥ 评分 ----------
 function levelClass(ratio){ return ratio>=0.85?'b-good':ratio>=0.6?'b-mid':'b-bad'; }
-
 async function run(){
-  const rows = document.querySelectorAll('#rubric .qrow');
-  if (!rows.length){ alert('请先生成评分表并录入评分标准'); return; }
+  if (!RUBRIC || !RUBRIC.items || !RUBRIC.items.length){ alert('请先在 ② 解析评分表'); return; }
+  const rows = document.querySelectorAll('#mapView .qrow');
+  if (!rows.length){ alert('请先在 ⑤ 生成对应表'); return; }
   const items = [];
-  rows.forEach((row,i) => {
+  rows.forEach(row => {
+    const idx = +row.getAttribute('data-item');
+    const it = RUBRIC.items[idx];
+    let answer = '', question = '', manual = null;
+    if (it.source === 'per_question'){
+      question = (row.querySelector('[data-q]')?.value || '').trim();
+      answer = (row.querySelector('[data-ans]')?.value || '').trim();
+    } else if (it.source === 'whole'){
+      answer = SEGMENTS.map(s=>s.text).join('\n');
+    } else {
+      manual = parseInt(row.querySelector('[data-manual]')?.value||'0',10) || 0;
+    }
     items.push({
-      dimension_key: 'dim_' + (i+1),
-      dimension_name: (row.querySelector('[data-name]').value || ('第'+(i+1)+'题')).trim(),
-      modality: 'qa',
-      max_score: parseInt(row.querySelector('[data-max]').value||'0',10) || 0,
-      question: row.querySelector('[data-q]').value.trim(),
-      answer_transcript: row.querySelector('[data-ans]').value.trim(),
-      reference_answer: row.querySelector('[data-std]').value.trim() || null,
+      dimension_key: it.key, dimension_name: it.name, modality: it.modality,
+      max_score: it.max_score, weight: it.weight, scoring_source: it.source,
+      question, answer_transcript: answer, manual_score: manual,
+      reference_answer: it.standards_text || null,
+      levels: it.levels || null, criteria: it.criteria || null,
     });
   });
-  if (items.some(it => it.max_score <= 0)){ alert('每题满分需为正整数'); return; }
-  const candidate = { name: name.value, candidate_no: no.value, position: IMPORTED ? IMPORTED.paper_name : '整段面试', language: language() };
+  const candidate = { name: name.value, candidate_no: no.value, position: document.getElementById('posName').value || (IMPORTED?IMPORTED.paper_name:'整段面试'), language: language() };
   const res = document.getElementById('result');
   res.innerHTML = '<div class="empty">AI 评分中…</div>';
   try {
     const r = await (await fetch('/interviews/custom', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({candidate, items})})).json();
     render(r);
-  } catch(e){ res.innerHTML = '<div class="empty">评分出错：' + e.message + '</div>'; }
+  } catch(e){ res.innerHTML = '<div class="empty">评分出错：'+e.message+'</div>'; }
 }
-
 function render(r){
   const res = document.getElementById('result');
-  if (!r || !r.dimensions){ res.innerHTML = '<div class="empty">评分失败：' + (r && r.detail ? r.detail : '未知错误') + '</div>'; return; }
+  if (!r || !r.dimensions){ res.innerHTML='<div class="empty">评分失败：'+(r&&r.detail?r.detail:'未知错误')+'</div>'; return; }
   const ratio = r.total_score / r.max_total;
   let html = `<div class="row"><div class="total">${r.total_score}<small>/${r.max_total}</small></div>
     <span class="badge ${levelClass(ratio)}">${r.overall_level}</span>
     <span class="small">引擎: ${r.engine_mode}</span>
     <a class="small" href="/interviews/${r.interview_id}/report" target="_blank">查看报告</a></div>`;
-  if (r.review && r.review.summary) html += `<p class="small">${r.review.summary}</p>`;
+  if (r.review && r.review.summary) html += `<p class="small">${esc(r.review.summary)}</p>`;
   r.dimensions.forEach(d => {
     const rt = d.score / d.max_score;
-    html += `<div class="dim-score"><div class="head"><b>${d.dimension_name}</b>
+    html += `<div class="dim-score"><div class="head"><b>${esc(d.dimension_name)}</b> ${srcTag(d.scoring_source)}
       <span><span class="badge ${levelClass(rt)}">${d.level}</span> ${d.score}/${d.max_score} · 置信${d.confidence}</span></div>`;
-    if (d.question) html += `<div class="small">题目: ${d.question}</div>`;
-    html += `<div class="bar"><i style="width:${rt*100}%"></i></div>
-      <div class="small">${d.rationale||''}</div>`;
-    (d.removed_segments||[]).forEach(s => html += `<div class="rm">✂ 已剔除${s.reason==='examiner_prompt'?'无关提示':'考官读题'}: ${s.text}</div>`);
-    (d.deductions||[]).forEach(x => html += `<div class="ded">− ${x.points}：${x.reason}<br><span class="small">证据: ${x.evidence||''}</span></div>`);
-    (d.evidence||[]).forEach(x => html += `<div class="ev">[${x.type}] ${x.content} <span class="small">${x.ref||''}</span></div>`);
+    if (d.question) html += `<div class="small">题目: ${esc(d.question)}</div>`;
+    html += `<div class="bar"><i style="width:${rt*100}%"></i></div><div class="small">${esc(d.rationale)}</div>`;
+    (d.removed_segments||[]).forEach(s => html += `<div class="rm">✂ 已剔除${s.reason==='examiner_prompt'?'无关提示':'考官读题'}: ${esc(s.text)}</div>`);
+    (d.deductions||[]).forEach(x => html += `<div class="ded">− ${x.points}：${esc(x.reason)}<br><span class="small">证据: ${esc(x.evidence)}</span></div>`);
+    (d.evidence||[]).forEach(x => html += `<div class="ev">[${x.type}] ${esc(x.content)} <span class="small">${esc(x.ref)}</span></div>`);
     html += `</div>`;
   });
   res.innerHTML = html;
 }
 
-document.getElementById('transcribe').onclick = transcribeFull;
+document.getElementById('posSelect').onchange = onSelectPosition;
+document.getElementById('reloadPos').onclick = loadPositions;
+document.getElementById('savePos').onclick = savePosition;
+document.getElementById('loadRubric').onclick = loadRubricSample;
+document.getElementById('parseRubric').onclick = parseRubric;
 document.getElementById('loadZh').onclick = () => loadSample('zh');
 document.getElementById('loadVi').onclick = () => loadSample('vi');
 document.getElementById('parsePaper').onclick = parsePaper;
-document.getElementById('buildTable').onclick = buildTable;
-document.getElementById('demoStd').onclick = fillDemoStd;
+document.getElementById('buildMap').onclick = buildMap;
 document.getElementById('run').onclick = run;
 init();
 </script>

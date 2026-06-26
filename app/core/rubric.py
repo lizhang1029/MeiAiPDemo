@@ -52,10 +52,12 @@ class Dimension:
     key: str
     name: str
     max_score: float
-    modality: str  # video | audio | content | qa
+    modality: str  # video | audio | content | qa | translation
     items: List[ScoreItem] = field(default_factory=list)
     levels: List[ScoreLevel] = field(default_factory=list)
     requirements: List[str] = field(default_factory=list)
+    weight: float = 1.0  # 权重：仅用于展示，总分=各项得分直接相加
+    scoring_source: str = "per_question"  # per_question | whole | manual
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -66,6 +68,8 @@ class Dimension:
             "items": [i.to_dict() for i in self.items],
             "levels": [l.to_dict() for l in self.levels],
             "requirements": self.requirements,
+            "weight": self.weight,
+            "scoring_source": self.scoring_source,
         }
 
 

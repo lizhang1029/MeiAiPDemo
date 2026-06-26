@@ -21,14 +21,37 @@ class ScoringEngine:
     def mode(self) -> str:
         return self.client.mode
 
+    def manual_dimension(self, dim: Dimension, item: Dict[str, Any]) -> Dict[str, Any]:
+        """人工录入项（如形象礼仪）：音频无法判断，直接采用评委录入的分数。"""
+        max_score = int(dim.max_score)
+        score = max(0, min(max_score, _to_int(item.get("manual_score"), 0)))
+        return {
+            "dimension_key": dim.key,
+            "dimension_name": dim.name,
+            "question": item.get("question", ""),
+            "max_score": max_score,
+            "score": score,
+            "level": level_for(dim, score),
+            "items": [],
+            "deductions": [],
+            "rationale": "该项为人工录入（音频无法判断），AI 不参与评分。",
+            "evidence": [],
+            "confidence": 1.0,
+            "removed_segments": [],
+            "weight": dim.weight,
+            "scoring_source": dim.scoring_source,
+        }
+
     def score_dimension(self, dim: Dimension, item: Dict[str, Any]) -> Dict[str, Any]:
         question = item.get("question", "")
         raw_answer = item.get("answer_transcript", "")
         features = item.get("multimodal_features")
         reference = item.get("reference_answer")
 
+        # 整场评分（如语言表达）不针对单题读题，避免误剔；按题评分剔除对应读题
+        clean_question = "" if dim.scoring_source == "whole" else question
         # 剔除考官读题，仅保留考生回答
-        cleaned = clean_transcript(raw_answer, question=question)
+        cleaned = clean_transcript(raw_answer, question=clean_question)
         answer = cleaned["answer"]
         removed = cleaned["removed"]
 
@@ -101,6 +124,8 @@ class ScoringEngine:
             "evidence": evidence,
             "confidence": _to_float(raw.get("confidence"), 0.6),
             "removed_segments": removed or [],
+            "weight": dim.weight,
+            "scoring_source": dim.scoring_source,
         }
 
     def score_interview(
@@ -118,7 +143,10 @@ class ScoringEngine:
             dim = dim_map.get(key)
             if not dim:
                 continue
-            dim_scores.append(self.score_dimension(dim, item))
+            if dim.scoring_source == "manual":
+                dim_scores.append(self.manual_dimension(dim, item))
+            else:
+                dim_scores.append(self.score_dimension(dim, item))
 
         total = int(sum(d["score"] for d in dim_scores))
         max_total = int(total_max) if total_max is not None else TOTAL_SCORE

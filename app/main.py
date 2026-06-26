@@ -5,6 +5,7 @@ REST API:
 - GET  /positions          岗位列表
 - GET  /positions/{id}/paper  按岗位生成试卷（每位考生题目可不同）
 - GET  /kb/search?q=...     RAG 知识库检索
+- POST /transcribe         上传音/视频，调用百炼 Paraformer 转写为文本
 - POST /interviews         创建面试 + 提交评分（一步式，便于 demo）
 - GET  /interviews/{id}    获取评分结果
 - GET  /interviews/{id}/evidence  获取证据链
@@ -18,9 +19,10 @@ import json
 import os
 from typing import Dict, Any
 
-from fastapi import Body, FastAPI, HTTPException
+from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, PlainTextResponse
 
+from .core.asr import ASRClient
 from .core.knowledge_base import KnowledgeBase
 from .core.paper_import import build_rubric, parse_exam_paper
 from .core.question_bank import get_paper, list_positions
@@ -38,6 +40,7 @@ app = FastAPI(
 
 engine = ScoringEngine()
 kb = KnowledgeBase()
+asr = ASRClient()
 
 # 简单内存存储（demo 用）
 _STORE: Dict[str, Dict[str, Any]] = {}
@@ -114,6 +117,22 @@ def create_interview_custom(req: CustomScoreRequest) -> Any:
 @app.get("/kb/search")
 def kb_search(q: str, top_k: int = 3) -> Dict[str, Any]:
     return {"query": q, "results": kb.search(q, top_k=top_k)}
+
+
+@app.post("/transcribe")
+async def transcribe(
+    file: UploadFile = File(..., description="面试录音或录像文件"),
+    language: str = Form("zh", description="语言：zh|vi|en"),
+) -> Dict[str, Any]:
+    """上传音/视频，调用百炼 Paraformer 转写为文本（无 Key 时降级 mock）。
+
+    返回的 text 为原始转写（可能含考官读题）；剔除考官读题、仅留考生回答在
+    评分阶段由后端自动完成。
+    """
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="上传文件为空")
+    return asr.transcribe(data, file.filename or "upload", language=language)
 
 
 @app.post("/interviews", response_model=ScoreResult)

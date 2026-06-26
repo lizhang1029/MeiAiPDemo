@@ -79,7 +79,7 @@
         <p class="hint" id="paperInfo">支持复合题（手动抽题）、纯文本题与图片题；维度与满分按实际作答题目自动生成。</p>
       </div>
 
-      <p class="hint">回答转写中以「考官：」开头的读题行会被自动剔除，仅对考生回答评分；所有分数为整数。</p>
+      <p class="hint">可直接粘贴转写文本，或在各维度下上传面试录音/录像，由百炼 Paraformer 自动转写。转写中以「考官：」开头的读题行会被自动剔除，仅对考生回答评分；所有分数为整数。</p>
       <div id="dims"></div>
       <div class="row" style="margin-top:8px">
         <button id="run">开始 AI 评分</button>
@@ -119,7 +119,34 @@ async function init(){
   const sel = document.getElementById('position');
   sel.innerHTML = pos.positions.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
   sel.onchange = loadBankPaper;
+  document.getElementById('dims').addEventListener('click', e => {
+    const btn = e.target.closest('.asr-btn');
+    if (btn) transcribeDim(btn.getAttribute('data-asr'));
+  });
   switchMode('bank');
+}
+
+function currentLanguage(){
+  if (MODE==='import' && IMPORTED) return IMPORTED.language || 'zh';
+  return document.getElementById('position').value === 'guide_en' ? 'en' : 'zh';
+}
+
+async function transcribeDim(key){
+  const fileInput = document.querySelector(`input[data-file="${key}"]`);
+  const status = document.querySelector(`[data-status="${key}"]`);
+  if (!fileInput || !fileInput.files.length){ alert('请先选择音/视频文件'); return; }
+  const fd = new FormData();
+  fd.append('file', fileInput.files[0]);
+  fd.append('language', currentLanguage());
+  status.textContent = '🔄 转写中，请稍候…';
+  try {
+    const r = await fetch('/transcribe', {method:'POST', body: fd});
+    const j = await r.json();
+    if (!r.ok){ status.textContent = '转写失败：' + (j.detail || r.status); return; }
+    const ta = document.querySelector(`textarea[data-key="${key}"]`);
+    if (ta) ta.value = j.text || '';
+    status.textContent = `✅ 已转写（${j.engine}${j.is_video?' · 视频抽音轨':''}）` + (j.note ? (' · ' + j.note) : '');
+  } catch(e){ status.textContent = '转写出错：' + e.message; }
 }
 
 function normFromRubric(){
@@ -142,7 +169,12 @@ function renderDims(specs){
       <label>题目</label><input data-q="${d.key}" placeholder="【${d.name}】题目" value="${(d.question||'').replace(/"/g,'&quot;')}" />
       ${imgs?`<div style="margin-top:6px">${imgs}</div>`:''}
       <label>回答转写（可含「考官：」读题行）</label>
-      <textarea data-key="${d.key}" placeholder="输入候选人在【${d.name}】的回答/讲解转写..."></textarea>`;
+      <textarea data-key="${d.key}" placeholder="输入候选人在【${d.name}】的回答/讲解转写，或下方上传音/视频自动转写..."></textarea>
+      <div class="row" style="margin-top:6px">
+        <input type="file" class="asr-file" data-file="${d.key}" accept="audio/*,video/*" style="flex:1;font-size:12px;padding:4px" />
+        <button class="ghost asr-btn" data-asr="${d.key}" type="button">🎙 转写</button>
+      </div>
+      <div class="small asr-status" data-status="${d.key}" style="margin-top:4px"></div>`;
     box.appendChild(div);
   });
 }

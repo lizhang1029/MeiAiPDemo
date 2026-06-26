@@ -11,6 +11,7 @@
 - **岗位 + 题目入口**：内置多岗位题库（中文导游 / 英语导游 / 景区讲解员），**每位考生题目可不同**；选岗位自动带出题目，也可手动改题。
 - **试题导入（接口对接）**：支持考务平台（ezinterview 格式）下发的试题 JSON（`sections → groups → items`），自动按 group 名映射评分维度、按 `selection` 抽题规则取题（含复合题 `mq-lr` 抽取小题）、抽取题干文本与图片，并以实际作答题目分值作为该维度满分。中文/外语题型不同（外语含**中译外/外译中**），维度与满分**随试题动态变化**。
 - **分数全部为整数**：总分、分项分、扣分值均为整数，不出现小数点。
+- **音/视频转写（ASR）**：可在各维度上传面试录音/录像，接入阿里百炼 **Paraformer** 语音识别自动转写为文本（视频先用 ffmpeg 抽取音轨）；无 Key 或缺依赖时降级为示例转写，demo 仍可跑。
 - **自动剔除考官读题**：ASR 转写中考官朗读题目的内容（「考官：…」标注行或与题目高度相似的行）会被自动剔除，仅对考生回答评分，并在结果中展示被剔除的内容。
 - **接入阿里百炼**：OpenAI 兼容模式调用 Qwen，结构化 JSON 输出。
 - **无 Key 自动降级**：未配置 `DASHSCOPE_API_KEY` 时走启发式 mock 引擎，demo 开箱即跑。
@@ -57,6 +58,8 @@ uvicorn app.main:app --reload --port 8000
 2. 点击「**填充示例数据（含考官读题）**」——示例回答里特意含「考官：…」读题行。
 3. 点击「**开始 AI 评分**」。
 4. 右侧查看：总分为整数；每个维度有得分/等级/扣分原因/引用证据/置信度；橙色「✂ 已剔除考官读题」即被自动剔除、未参与评分的内容。
+
+> 💡 **音/视频自动转写**：每个维度的回答框下方有「选择文件 + 🎙 转写」。上传面试录音（mp3/wav/m4a 等）或录像（mp4/mov 等）后点「转写」，系统调用百炼 Paraformer 把语音转成文本并回填到回答框（视频会先用 ffmpeg 抽音轨）。未配置 Key 时返回示例转写，便于离线演示。需安装 `ffmpeg` 才能处理视频。
 5. 点「查看报告」可看 Markdown 评分报告。
 
 **方式 B · 导入试题 JSON（接口）**
@@ -101,6 +104,7 @@ curl -X POST http://localhost:8000/papers/import -H "Content-Type: application/j
 | POST | `/papers/import` | 解析考务接口下发的试题 JSON → 动态试卷（维度/题目/满分/图片）；`?pick=first\|random` |
 | POST | `/interviews/custom` | 基于导入试卷评分（维度与满分随试题动态变化） |
 | GET | `/kb/search?q=` | RAG 知识库检索 |
+| POST | `/transcribe` | 上传音/视频文件 → 百炼 Paraformer 转写为文本（无 Key 降级 mock）；表单字段 `file`、`language=zh\|vi\|en` |
 | POST | `/interviews` | 创建面试并评分 |
 | GET | `/interviews/{id}` | 获取评分结果 |
 | GET | `/interviews/{id}/evidence` | 获取证据链（含被剔除的考官读题） |
@@ -120,6 +124,7 @@ app/
     knowledge_base.py   RAG 知识库
     question_bank.py    岗位与题库（每位考生题目可不同）
     paper_import.py     试题导入：解析考务接口试题 JSON → 动态试卷
+    asr.py              音/视频转写（百炼 Paraformer + ffmpeg 抽音轨，无 Key 降级 mock）
     transcript.py       转写清洗（剔除考官读题）
     scoring_engine.py   评分引擎编排（整数评分 + 校准）
     schemas.py          API 数据结构

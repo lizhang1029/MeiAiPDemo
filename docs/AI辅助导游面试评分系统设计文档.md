@@ -206,6 +206,27 @@ graph LR
 
 被剔除片段记录在 `removed_segments`（含 `reason`），随评分结果返回，供评委复核时透明展示；只有清洗后的考生回答进入评分 Prompt。实现见 `app/core/transcript.py`。生产环境结合**说话人分离 + 麦克风通道**可进一步提升准确率（考官与考生使用不同麦克风/座位方位）。
 
+### 2.3 音/视频转写（ASR）
+
+面试录音/录像需先转为文本才能评分。系统提供 `POST /transcribe` 入口，接入阿里百炼 **Paraformer** 语音识别：
+
+```mermaid
+graph LR
+    A[上传音/视频] --> B{是否视频?}
+    B -->|是| C[ffmpeg 抽音轨 → 16k 单声道 wav]
+    B -->|否| D[ffmpeg 重采样 → 16k wav]
+    C & D --> E[Paraformer 语音识别 Recognition.call]
+    E --> F[整段转写文本]
+    F --> G[回填到对应维度回答框]
+    G --> H[评分前经 2.2 剔除考官读题]
+```
+
+要点：
+1. **格式统一**：任意音/视频先用 ffmpeg 转 16k 单声道 wav（Paraformer 推荐格式），视频自动抽取音轨。
+2. **语言提示**：按维度/试卷语言传入 `language_hints`（zh/vi/en），提升识别准确率。
+3. **降级策略**：未配置 `DASHSCOPE_API_KEY`、缺少 `dashscope` 依赖或缺 `ffmpeg`、识别失败时，自动返回示例转写并附 `note` 说明，保证 demo 离线可跑。
+4. **职责边界**：`/transcribe` 只产出**原始转写**（可能含考官读题）；剔除考官读题、仅留考生回答由评分阶段的 2.2 清洗完成。实现见 `app/core/asr.py`。
+
 ---
 
 ## 3. AI 评分引擎设计

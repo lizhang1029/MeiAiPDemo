@@ -21,6 +21,8 @@ import subprocess
 import tempfile
 from typing import Dict, Any, List, Optional
 
+from .transcript import split_examiner_candidate
+
 # Paraformer 实时识别模型（支持本地文件同步识别）
 ASR_MODEL = os.getenv("DASHSCOPE_ASR_MODEL", "paraformer-realtime-v2")
 
@@ -297,12 +299,17 @@ def _segment_by_pause(sentences: List[Dict[str, Any]], pause_ms: int) -> List[Di
 
     segments: List[Dict[str, Any]] = []
     for i, g in enumerate(groups):
+        text = "".join((x.get("text") or "") for x in g).strip()
+        qa = split_examiner_candidate(text)
         segments.append(
             {
                 "index": i,
                 "begin_ms": g[0].get("begin_time"),
                 "end_ms": g[-1].get("end_time"),
-                "text": "".join((x.get("text") or "") for x in g).strip(),
+                "text": text,
+                # 未导入试题时，从录音中分离出的「考官提问」与「考生回答」（参考用，可在前端修改）
+                "question": qa["question"],
+                "answer": qa["answer"],
             }
         )
     return segments
@@ -346,6 +353,10 @@ def _mock_segments(language: str) -> List[Dict[str, Any]]:
         dur = 8000 + len(t) * 40  # 估算每段时长（仅用于展示时间戳）
         begin = cursor
         end = cursor + dur
-        segments.append({"index": i, "begin_ms": begin, "end_ms": end, "text": t})
+        qa = split_examiner_candidate(t)
+        segments.append({
+            "index": i, "begin_ms": begin, "end_ms": end, "text": t,
+            "question": qa["question"], "answer": qa["answer"],
+        })
         cursor = end + 4000  # 段间 4s 停顿（模拟题前等待）
     return segments

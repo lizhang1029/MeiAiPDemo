@@ -64,6 +64,53 @@ def _similar(a: str, b: str) -> float:
     return max(jaccard, contain)
 
 
+# 「可以开始作答」类口令：标志考官读题结束、考生回答即将开始。
+# 用于在一段录音内切分「考官提问（读题/口令）」与「考生回答」。
+_BEGIN_PATTERNS = [
+    r"听到提示音.{0,8}(?:可以|请)?开始(?:作答|答题|回答|讲解|表演)",
+    r"(?:现在|可以|请|那么)?\s*开始(?:作答|答题|回答|讲解|表演)",
+    r"请开始(?:你的)?(?:作答|答题|回答|讲解|表演)?",
+    r"请作答",
+]
+_BEGIN_RE = re.compile("|".join(_BEGIN_PATTERNS), re.IGNORECASE)
+
+# 题前常见的考务前缀，从「考官提问」中剔除后得到更干净的题干参考。
+_LEAD_PROMPT_RE = re.compile(
+    r"^\s*(?:下\s*(?:一|1)?\s*题[，,、。\s]*|最后(?:一|1)?\s*题[，,、。\s]*|第\s*\d+\s*题[，,、。\s]*"
+    r"|请看(?:大屏幕|屏幕|题目|试题|大屏)[，,、。\s]*"
+    r"|听到提示音.{0,8}(?:可以|请)?开始(?:作答|答题|回答|讲解|表演)?[，,、。\s]*)",
+)
+
+
+def split_examiner_candidate(text: str) -> Dict[str, str]:
+    """把一段录音转写切分为「考官提问（读题/口令）」与「考生回答」。
+
+    无说话人分离时的启发式：考官读完题后通常会说「（请）开始作答/讲解」之类
+    口令，其后才是考生回答。取最后一个该类口令的位置为分界：
+      - 之前（含口令）视为考官提问/读题；
+      - 之后视为考生回答。
+    若整段没有此类口令，则无法可靠切分，返回空 question、全文作为 answer。
+
+    返回: {"question": "考官提问/读题（已尽量去除考务口令前缀）", "answer": "考生回答"}
+    """
+    t = (text or "").strip()
+    if not t:
+        return {"question": "", "answer": ""}
+    matches = list(_BEGIN_RE.finditer(t))
+    if not matches:
+        return {"question": "", "answer": t}
+    boundary = matches[-1].end()
+    examiner = t[:boundary].strip()
+    answer = t[boundary:].strip(" 　,，。、")
+    # 去掉「开始作答」等口令本身与「下一题/请看大屏幕」等前缀，得到更纯净的题干
+    question = _BEGIN_RE.sub("", examiner).strip(" 　,，。、")
+    prev = None
+    while question and question != prev:
+        prev = question
+        question = _LEAD_PROMPT_RE.sub("", question).strip(" 　,，。、")
+    return {"question": question, "answer": answer}
+
+
 def clean_transcript(
     raw: str,
     question: str = "",

@@ -233,6 +233,10 @@ async function parseRubric(){
   if (!r.ok){ alert('解析失败：'+(j.detail||r.status)); return; }
   RUBRIC = j;
   renderRubric();
+  // 解析结果明细已隐藏，这里给一行简短确认，避免「点了没反应」的错觉。
+  const info = document.getElementById('rubricInfo');
+  const pq = (RUBRIC.items||[]).filter(i=>i.source==='per_question').length;
+  info.textContent = `✅ 已解析评分表：共 ${(RUBRIC.items||[]).length} 项 · 满分合计 ${RUBRIC.total_max} · 按题评分 ${pq} 项`;
 }
 function levelRange(l){ return l.min===l.max ? `${l.min}分` : `${l.min}-${l.max}分`; }
 function critListHtml(criteria){
@@ -295,10 +299,22 @@ async function transcribeFull(){
   const status = document.getElementById('asrStatus');
   const btn = document.getElementById('transcribe');
   btn.disabled = true;
-  status.innerHTML = `🔄 正在${isVideo?'抽取音轨并':''}转写并分段，请稍候…`
-    + `<br><span class="small">音/视频较长时识别可能需要数十秒至数分钟${isVideo?'（视频还需先抽取音轨，更慢）':''}，请勿关闭页面。</span>`;
+  // 实时计时，长时间解析时给出「已用时」提示，避免页面看起来无响应。
+  const t0 = Date.now();
+  const loadingHtml = () => {
+    const sec = Math.floor((Date.now() - t0) / 1000);
+    return `🔄 正在${isVideo?'抽取音轨并':''}转写并分段，请稍候…（已用时 ${sec}s）`
+      + `<br><span class="small">音/视频较长时识别可能需要数十秒至数分钟${isVideo?'（视频还需先抽取音轨，更慢）':''}，请勿关闭页面。</span>`;
+  };
+  status.innerHTML = loadingHtml();
+  const timer = setInterval(() => { status.innerHTML = loadingHtml(); }, 1000);
+  // 超时保护：默认 10 分钟仍未返回则中断并提示，避免无限等待。
+  const ctrl = new AbortController();
+  const TIMEOUT_MS = 10 * 60 * 1000;
+  const killer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
-    const r = await fetch('/transcribe_full', {method:'POST', body: fd});
+    const r = await fetch('/transcribe_full', {method:'POST', body: fd, signal: ctrl.signal});
+    clearInterval(timer);
     let j = null;
     try { j = await r.json(); } catch(_){ j = null; }
     if (!r.ok){
@@ -318,8 +334,13 @@ async function transcribeFull(){
     renderFullText(j.text || '');
     buildMap();
   } catch(e){
-    status.innerHTML = `<span style="color:var(--warn)">❌ 转写出错</span><br><span class="small">原因：${esc(e.message||String(e))}</span>`;
+    const msg = (e && e.name === 'AbortError')
+      ? `转写超时（超过 ${TIMEOUT_MS/60000} 分钟未返回）。可能是文件过大或服务器识别耗时过长，请缩短录音或检查后端日志。`
+      : (e.message || String(e));
+    status.innerHTML = `<span style="color:var(--warn)">❌ 转写出错</span><br><span class="small">原因：${esc(msg)}</span>`;
   } finally {
+    clearInterval(timer);
+    clearTimeout(killer);
     btn.disabled = false;
   }
 }
@@ -465,6 +486,7 @@ document.getElementById('parseRubric').onclick = parseRubric;
 document.getElementById('loadZh').onclick = () => loadSample('zh');
 document.getElementById('loadVi').onclick = () => loadSample('vi');
 document.getElementById('parsePaper').onclick = parsePaper;
+document.getElementById('transcribe').onclick = transcribeFull;
 document.getElementById('buildMap').onclick = buildMap;
 document.getElementById('run').onclick = run;
 init();

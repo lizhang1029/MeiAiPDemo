@@ -24,9 +24,15 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Optional
 
-# 一级评分项表头：形如 "1.形象礼仪 - 5分0~5分 【权重：1】"
+# 一级评分项表头，兼容两种常见写法（均带【权重】标记）：
+#   "1.形象礼仪 - 5分0~5分 【权重：1】"  （名称 - 满分 + 区间）
+#   "1.专业知识0~55分 【权重：1】"        （名称 + 区间，无破折号）
+# 满分取「分」前的数值；若为区间（0~55）取上界。名称为序号后、分值/破折号前的文字。
 _ITEM_RE = re.compile(
-    r"^\s*(\d+)\s*[\.、]\s*(.+?)\s*[-—]\s*(\d+(?:\.\d+)?)\s*分",
+    r"^\s*(\d+)\s*[\.、]\s*(.+?)\s*"
+    r"(?:[-—]\s*\d+(?:\.\d+)?\s*分\s*)?"          # 可选 "- 5分"
+    r"(?:\d+(?:\.\d+)?\s*[~～至]\s*)?"             # 可选区间下界 "0~"
+    r"(\d+(?:\.\d+)?)\s*分",                       # 满分（区间上界或单值）
 )
 _WEIGHT_RE = re.compile(r"权重\s*[：:]\s*(\d+(?:\.\d+)?)")
 
@@ -126,7 +132,9 @@ def parse_rubric_text(text: str) -> Dict[str, Any]:
             if mt:
                 declared_total = _to_num(mt.group(1))
 
-        m_item = _ITEM_RE.match(line)
+        # 评分项表头以【权重】标记区分（评分点/等级档位行不含「权重」），
+        # 避免无破折号的宽松匹配把「1. 形象气质（1分）：…」误判为评分项。
+        m_item = _ITEM_RE.match(line) if "权重" in line else None
         if m_item:
             _flush()
             name = m_item.group(2).strip()

@@ -137,7 +137,8 @@ def parse_rubric_text(text: str) -> Dict[str, Any]:
         m_item = _ITEM_RE.match(line) if "权重" in line else None
         if m_item:
             _flush()
-            name = m_item.group(2).strip()
+            # 去掉可能被非贪婪分组吞入名称的拖尾破折号（如"形象礼仪 -"→"形象礼仪"）
+            name = m_item.group(2).strip().rstrip("-—").strip()
             max_score = _to_num(m_item.group(3))
             mw = _WEIGHT_RE.search(line)
             weight = _to_num(mw.group(1)) if mw else 1.0

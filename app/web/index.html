@@ -382,14 +382,19 @@ function buildMap(){
     let inner = '';
     if (it.source === 'per_question'){
       pqIdx++;
+      const hasPaper = QSTEMS.length > 0;
       const q = QSTEMS[pqIdx] || {question:'', images:[]};
+      const seg = SEGMENTS[pqIdx];
       const imgs = (q.images||[]).map((u,k)=>`<a class="img" href="${esc(u)}" target="_blank">🖼 题目图片${(q.images.length>1)?(' '+(k+1)):''}</a>`).join(' ');
-      inner = `<label>题干（来自导入 JSON，只读）</label>
-        <textarea data-q readonly placeholder="未导入题干，可仅按回答与评分标准评分">${esc(q.question)}</textarea>
+      // 未导入试题时，题干用从录音自动分离出的「考官提问」填充并允许修改
+      const qVal = hasPaper ? q.question : (seg ? (seg.question||'') : '');
+      const qLabel = hasPaper ? '题干（来自导入 JSON，只读）' : '题干（未导入试题，已从录音自动分离考官提问，可修改）';
+      inner = `<label>${qLabel}</label>
+        <textarea data-q ${hasPaper?'readonly':''} placeholder="未导入题干，可仅按回答与评分标准评分">${esc(qVal)}</textarea>
         ${imgs?`<div style="margin-top:4px">${imgs}</div>`:''}
         <label>对应录音段</label><select data-seg>${segOptions(pqIdx<SEGMENTS.length?pqIdx:'')}</select>
         <label>该题考生回答（自动回填，可修改；含读题/提示将自动剔除）</label>
-        <textarea data-ans placeholder="该题考生回答转写">${esc(SEGMENTS[pqIdx]?SEGMENTS[pqIdx].text:'')}</textarea>`;
+        <textarea data-ans placeholder="该题考生回答转写">${esc(seg?seg.text:'')}</textarea>`;
     } else if (it.source === 'whole'){
       inner = `<p class="hint">整场评分：使用全部转写（${SEGMENTS.length} 段）作为依据，不针对单题。</p>`;
     } else {
@@ -416,8 +421,13 @@ function buildMap(){
 function onSegChange(e){
   const row = e.target.closest('.qrow');
   const ans = row.querySelector('[data-ans]');
+  const q = row.querySelector('[data-q]');
   const v = e.target.value;
-  if (v!=='' && SEGMENTS[+v]) ans.value = SEGMENTS[+v].text;
+  if (v!=='' && SEGMENTS[+v]){
+    ans.value = SEGMENTS[+v].text;
+    // 未导入试题时题干可编辑，随对应录音段同步更新自动分离出的考官提问
+    if (q && !q.readOnly) q.value = SEGMENTS[+v].question || '';
+  }
 }
 
 // ---------- ⑥ 评分 ----------
@@ -447,7 +457,7 @@ async function run(){
       levels: it.levels || null, criteria: it.criteria || null,
     });
   });
-  const candidate = { name: name.value, candidate_no: no.value, position: document.getElementById('posName').value || (IMPORTED?IMPORTED.paper_name:'整段面试'), language: language() };
+  const candidate = { name: document.getElementById('name').value, candidate_no: document.getElementById('no').value, position: document.getElementById('posName').value || (IMPORTED?IMPORTED.paper_name:'整段面试'), language: language() };
   const res = document.getElementById('result');
   res.innerHTML = '<div class="empty">AI 评分中…</div>';
   try {

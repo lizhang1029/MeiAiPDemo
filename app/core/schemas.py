@@ -64,6 +64,18 @@ class RubricParseRequest(BaseModel):
     text: str = Field(..., description="粘贴的整张评分表文本")
 
 
+class AlignRequest(BaseModel):
+    """把评分项与录音分段对齐的请求。"""
+
+    items: List[Dict[str, Any]] = Field(..., description="评分表解析得到的评分项")
+    segments: List[Dict[str, Any]] = Field(
+        default_factory=list, description="录音分段（含 question/answer/text 字段）"
+    )
+    qstems: List[Dict[str, Any]] = Field(
+        default_factory=list, description="导入试题题干（可空）"
+    )
+
+
 class SavePositionRequest(BaseModel):
     """保存（新建/更新）岗位及其评分表。"""
 

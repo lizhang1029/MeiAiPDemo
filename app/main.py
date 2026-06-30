@@ -26,6 +26,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse
 
 from .core.asr import ASRClient
 from .core.knowledge_base import KnowledgeBase
+from .core.align import align_items_segments
 from .core.paper_import import build_rubric, parse_exam_paper
 from .core.positions_store import (
     delete_position,
@@ -37,6 +38,7 @@ from .core.question_bank import get_paper, list_positions
 from .core.rubric import rubric_to_dict
 from .core.rubric_parse import parse_rubric_text
 from .core.schemas import (
+    AlignRequest,
     CustomScoreRequest,
     RubricParseRequest,
     SavePositionRequest,
@@ -130,6 +132,12 @@ def get_rubric_samples() -> Dict[str, Any]:
             with open(path, encoding="utf-8") as f:
                 samples[key] = f.read()
     return {"samples": samples}
+
+
+@app.post("/align")
+def align(req: AlignRequest) -> Dict[str, Any]:
+    """把评分项与录音分段对齐：自动判定按题/整场，并按考官提问语义匹配录音段。"""
+    return align_items_segments(req.items, req.segments, req.qstems)
 
 
 @app.get("/positions/{position_id}/paper")

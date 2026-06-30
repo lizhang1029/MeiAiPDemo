@@ -372,31 +372,50 @@ function segOptions(selected){
   SEGMENTS.forEach(s => { opts += `<option value="${s.index}" ${s.index===selected?'selected':''}>第 ${s.index+1} 段 · ${fmtMs(s.begin_ms)}–${fmtMs(s.end_ms)}</option>`; });
   return opts;
 }
-function buildMap(){
+async function buildMap(){
   const box = document.getElementById('mapView');
   if (!RUBRIC || !RUBRIC.items || !RUBRIC.items.length){
     box.innerHTML = '<div class="empty">完成 ②（评分表）后，点「生成对应表」。</div>'; document.getElementById('mapInfo').textContent=''; return;
   }
-  let pqIdx = -1;
+  // 后端对齐：自动判定每个评分项是「按题/整场/人工」，并按考官提问语义匹配录音段
+  let align = null;
+  try {
+    const r = await fetch('/align', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({items: RUBRIC.items, segments: SEGMENTS, qstems: QSTEMS})});
+    if (r.ok) align = await r.json();
+  } catch(_){ align = null; }
+  const A = (align && align.alignment) ? align.alignment : RUBRIC.items.map((it,idx)=>({
+    item_index: idx, effective_source: it.source, parsed_source: it.source,
+    seg_index: it.source==='per_question' ? idx : null,
+    question: '', question_editable: it.source==='per_question' && QSTEMS.length===0,
+    matched: false, note: ''
+  }));
+
+  let qstemIdx = -1;
   const html = RUBRIC.items.map((it, idx) => {
+    const a = A[idx] || {};
+    const eff = a.effective_source || it.source;
     let inner = '';
-    if (it.source === 'per_question'){
-      pqIdx++;
-      const hasPaper = QSTEMS.length > 0;
-      const q = QSTEMS[pqIdx] || {question:'', images:[]};
-      const seg = SEGMENTS[pqIdx];
+    if (eff === 'per_question'){
+      const hasPaper = QSTEMS.length > 0 && !a.question_editable;
+      if (it.source === 'per_question') qstemIdx++;
+      const q = hasPaper ? (QSTEMS[qstemIdx] || {question:'', images:[]}) : {question: a.question||'', images:[]};
+      const segI = (a.seg_index===null||a.seg_index===undefined) ? '' : a.seg_index;
+      const seg = (segI!=='') ? SEGMENTS[segI] : null;
       const imgs = (q.images||[]).map((u,k)=>`<a class="img" href="${esc(u)}" target="_blank">🖼 题目图片${(q.images.length>1)?(' '+(k+1)):''}</a>`).join(' ');
-      // 未导入试题时，题干用从录音自动分离出的「考官提问」填充并允许修改
-      const qVal = hasPaper ? q.question : (seg ? (seg.question||'') : '');
+      const qVal = q.question || '';
       const qLabel = hasPaper ? '题干（来自导入 JSON，只读）' : '题干（未导入试题，已从录音自动分离考官提问，可修改）';
-      inner = `<label>${qLabel}</label>
+      inner = `${a.note?`<p class="hint">${esc(a.note)}</p>`:''}
+        <label>${qLabel}</label>
         <textarea data-q ${hasPaper?'readonly':''} placeholder="未导入题干，可仅按回答与评分标准评分">${esc(qVal)}</textarea>
         ${imgs?`<div style="margin-top:4px">${imgs}</div>`:''}
-        <label>对应录音段</label><select data-seg>${segOptions(pqIdx<SEGMENTS.length?pqIdx:'')}</select>
+        <label>对应录音段</label><select data-seg>${segOptions(segI)}</select>
         <label>该题考生回答（自动回填，可修改；含读题/提示将自动剔除）</label>
         <textarea data-ans placeholder="该题考生回答转写">${esc(seg?seg.text:'')}</textarea>`;
-    } else if (it.source === 'whole'){
-      inner = `<p class="hint">整场评分：使用全部转写（${SEGMENTS.length} 段）作为依据，不针对单题。</p>`;
+    } else if (eff === 'whole'){
+      const reclassified = a.parsed_source === 'per_question';
+      inner = `${reclassified&&a.note?`<p class="hint">${esc(a.note)}</p>`:''}
+        <p class="hint">整场评分：使用全部转写（${SEGMENTS.length} 段）作为依据，不针对单题。</p>`;
     } else {
       inner = `<label>人工录入分数（0 ~ ${it.max_score}）</label><input data-manual type="number" min="0" max="${it.max_score}" value="0" />`;
     }
@@ -407,15 +426,22 @@ function buildMap(){
           ${crit?`<div class="rlabel" style="margin-top:6px">评分点（子项）</div><ul>${crit}</ul>`:''}
           ${lv?`<div class="rlabel">等级档位</div><ul>${lv}</ul>`:''}</details>`
       : (it.standards_text?`<details class="stdbox"><summary>评分标准（评分依据）</summary><div class="small" style="margin-top:6px">${esc(it.standards_text).replace(/\n/g,'<br>')}</div></details>`:'');
-    return `<div class="qrow" data-item="${idx}" data-source="${it.source}" data-max="${it.max_score}">
-      <div class="qt"><span>${esc(it.name)} · 满分 ${it.max_score}</span>${srcTag(it.source)}</div>
+    return `<div class="qrow" data-item="${idx}" data-source="${eff}" data-max="${it.max_score}">
+      <div class="qt"><span>${esc(it.name)} · 满分 ${it.max_score}</span>${srcTag(eff)}</div>
       ${std}${inner}</div>`;
   }).join('');
   box.innerHTML = html;
   box.querySelectorAll('select[data-seg]').forEach(sel => sel.addEventListener('change', onSegChange));
-  const pq = RUBRIC.items.filter(i=>i.source==='per_question').length;
-  let note = `按题评分 ${pq} 项 · 录音 ${SEGMENTS.length} 段 · 题干 ${QSTEMS.length} 道`;
-  if (QSTEMS.length && QSTEMS.length !== pq) note += ` ⚠ 题干数与按题评分项数不一致`;
+
+  const pqParsed = RUBRIC.items.filter(i=>i.source==='per_question').length;
+  let note;
+  if (align){
+    note = `按题评分 ${align.per_question_matched}/${align.per_question_total} 项已匹配录音段 · 录音 ${SEGMENTS.length} 段 · 题干 ${QSTEMS.length} 道`;
+    if (align.per_question_to_whole>0) note += ` · ${align.per_question_to_whole} 项无对应提问已转为整场评分`;
+    if (align.paper_mode) note += ` · 已按导入试题 1:1 对应`;
+  } else {
+    note = `按题评分 ${pqParsed} 项 · 录音 ${SEGMENTS.length} 段 · 题干 ${QSTEMS.length} 道`;
+  }
   document.getElementById('mapInfo').textContent = note;
 }
 function onSegChange(e){
@@ -427,6 +453,8 @@ function onSegChange(e){
     ans.value = SEGMENTS[+v].text;
     // 未导入试题时题干可编辑，随对应录音段同步更新自动分离出的考官提问
     if (q && !q.readOnly) q.value = SEGMENTS[+v].question || '';
+  } else if (v===''){
+    ans.value = '';
   }
 }
 
@@ -440,18 +468,20 @@ async function run(){
   rows.forEach(row => {
     const idx = +row.getAttribute('data-item');
     const it = RUBRIC.items[idx];
+    // 生效评分来源以 ⑤ 对齐结果为准（按题项可能因无对应提问被自动改为整场）
+    const eff = row.getAttribute('data-source') || it.source;
     let answer = '', question = '', manual = null;
-    if (it.source === 'per_question'){
+    if (eff === 'per_question'){
       question = (row.querySelector('[data-q]')?.value || '').trim();
       answer = (row.querySelector('[data-ans]')?.value || '').trim();
-    } else if (it.source === 'whole'){
+    } else if (eff === 'whole'){
       answer = SEGMENTS.map(s=>s.text).join('\n');
     } else {
       manual = parseInt(row.querySelector('[data-manual]')?.value||'0',10) || 0;
     }
     items.push({
       dimension_key: it.key, dimension_name: it.name, modality: it.modality,
-      max_score: it.max_score, weight: it.weight, scoring_source: it.source,
+      max_score: it.max_score, weight: it.weight, scoring_source: eff,
       question, answer_transcript: answer, manual_score: manual,
       reference_answer: it.standards_text || null,
       levels: it.levels || null, criteria: it.criteria || null,

@@ -66,7 +66,10 @@ def _infer_source_modality(name: str) -> tuple[str, str]:
 
     - 形象/礼仪/着装/妆容/仪态 → 人工录入(manual)，音频无法判断；
     - 语言表达/普通话/语音 → 整场评分(whole)，贯穿全部回答；
-    - 含「讲解」→ 按题(content)；含「译」→ 按题(translation)；其余 → 按题(qa)。
+    - 含明显题型词（讲解/问答/口译/翻译/译/模拟/案例/演示）→ 按题(per_question)，
+      可与录音中分离出的某段「考官提问」对应；
+    - 其余抽象能力维度（如专业知识/系统思维/计划推行/学习发展/综合素质）→
+      整场评分(whole)，无法对应到单一题目，用全部转写/多段问答作为评分依据。
     """
     if any(k in name for k in ("形象", "礼仪", "仪容", "仪表", "着装", "妆容", "仪态")):
         return "manual", "video"
@@ -74,9 +77,12 @@ def _infer_source_modality(name: str) -> tuple[str, str]:
         return "whole", "audio"
     if "讲解" in name:
         return "per_question", "content"
-    if "译" in name:
+    if any(k in name for k in ("口译", "翻译", "译")):
         return "per_question", "translation"
-    return "per_question", "qa"
+    if any(k in name for k in ("问答", "模拟", "案例", "演示", "现场", "情景")):
+        return "per_question", "qa"
+    # 抽象能力/素养类维度：无对应题目，按整场评分
+    return "whole", "audio"
 
 
 _NONAME_LEVEL_NAMES = ["优秀", "良好", "合格", "不合格"]

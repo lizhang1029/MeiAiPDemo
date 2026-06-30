@@ -129,3 +129,4 @@ class ScoreResult(BaseModel):
     review: Dict[str, Any] = {}
     engine_mode: str = "mock"
     created_at: str = ""
+    elapsed_ms: int = Field(0, description="AI 评分执行耗时（毫秒）")

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from typing import Dict, Any
 
 from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
@@ -183,12 +184,14 @@ def create_interview_custom(req: CustomScoreRequest) -> Any:
     dim_specs = [i.model_dump() for i in req.items]
     rubric = build_rubric(dim_specs)
     total_max = sum(int(i.max_score) for i in req.items)
+    t0 = time.perf_counter()
     result = engine.score_interview(
         req.candidate.model_dump(),
         dim_specs,
         rubric=rubric,
         total_max=total_max,
     )
+    result["elapsed_ms"] = int((time.perf_counter() - t0) * 1000)
     _STORE[result["interview_id"]] = result
     return result
 
@@ -228,9 +231,12 @@ async def transcribe_full(
     data = await file.read()
     if not data:
         raise HTTPException(status_code=400, detail="上传文件为空")
-    return asr.transcribe_segments(
+    t0 = time.perf_counter()
+    result = asr.transcribe_segments(
         data, file.filename or "upload", language=language, pause_ms=pause_ms
     )
+    result["elapsed_ms"] = int((time.perf_counter() - t0) * 1000)
+    return result
 
 
 @app.post("/interviews", response_model=ScoreResult)

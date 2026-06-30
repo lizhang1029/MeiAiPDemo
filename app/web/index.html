@@ -323,12 +323,13 @@ async function transcribeFull(){
       return;
     }
     SEGMENTS = j.segments || [];
+    const took = (j.elapsed_ms!=null ? j.elapsed_ms/1000 : (Date.now()-t0)/1000).toFixed(1);
     if (j.engine === 'mock'){
       status.innerHTML = `<span style="color:var(--warn)">⚠ 未使用真实语音识别，返回的是示例文本（与你上传的音频无关）</span>`
         + `<br><span class="small">原因：${esc(j.note||'未配置 DASHSCOPE_API_KEY 或识别失败')}</span>`
-        + `<br><span class="small">共 ${SEGMENTS.length} 段（示例）。如需识别真实音频：设置 DASHSCOPE_API_KEY、安装 dashscope 与 ffmpeg 后重启。</span>`;
+        + `<br><span class="small">共 ${SEGMENTS.length} 段（示例）· 解析用时 ${took}s。如需识别真实音频：设置 DASHSCOPE_API_KEY、安装 dashscope 与 ffmpeg 后重启。</span>`;
     } else {
-      status.innerHTML = `✅ 已转写并分段（真实识别 ${esc(j.engine)}${j.is_video?' · 视频抽音轨':''}）· 共 ${SEGMENTS.length} 段` + (j.note?(' · '+esc(j.note)):'');
+      status.innerHTML = `✅ 已转写并分段（真实识别 ${esc(j.engine)}${j.is_video?' · 视频抽音轨':''}）· 共 ${SEGMENTS.length} 段 · 解析用时 ${took}s` + (j.note?(' · '+esc(j.note)):'');
     }
     renderSegments();
     renderFullText(j.text || '');
@@ -499,9 +500,11 @@ function render(r){
   const res = document.getElementById('result');
   if (!r || !r.dimensions){ res.innerHTML='<div class="empty">评分失败：'+(r&&r.detail?r.detail:'未知错误')+'</div>'; return; }
   const ratio = r.total_score / r.max_total;
+  const took = (r.elapsed_ms!=null ? r.elapsed_ms/1000 : 0).toFixed(1);
   let html = `<div class="row"><div class="total">${r.total_score}<small>/${r.max_total}</small></div>
     <span class="badge ${levelClass(ratio)}">${r.overall_level}</span>
     <span class="small">引擎: ${r.engine_mode}</span>
+    <span class="small">评分用时: ${took}s</span>
     <a class="small" href="/interviews/${r.interview_id}/report" target="_blank">查看报告</a></div>`;
   if (r.review && r.review.summary) html += `<p class="small">${esc(r.review.summary)}</p>`;
   r.dimensions.forEach(d => {

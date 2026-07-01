@@ -40,6 +40,10 @@ class CustomQAItem(BaseModel):
     modality: str = Field("qa", description="模态：video|audio|content|qa|translation")
     max_score: int = Field(10, description="该项满分（来自评分表）")
     question: str = Field("", description="题目（按题评分时与该项对应）")
+    images: List[str] = Field(
+        default_factory=list,
+        description="题目图片（外译中图片直读判分用；URL/data URL/base64）",
+    )
     answer_transcript: str = Field("", description="候选人回答转写，可含「考官：」读题行")
     reference_answer: Optional[str] = None
     weight: float = Field(1.0, description="权重：仅展示，总分=各项得分直接相加")

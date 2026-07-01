@@ -7,9 +7,15 @@ from typing import Dict, Any, List
 
 from .bailian_client import BailianClient
 from .knowledge_base import KnowledgeBase
-from .prompts import SYSTEM_PROMPT, build_scoring_prompt, build_review_prompt
+from .prompts import (
+    SYSTEM_PROMPT,
+    build_review_prompt,
+    build_scoring_prompt,
+    build_translation_vision_prompt,
+)
 from .rubric import DIMENSION_BY_KEY, TOTAL_SCORE, Dimension, level_for
 from .transcript import clean_transcript
+from .vision import normalize_images
 
 
 class ScoringEngine:
@@ -54,6 +60,15 @@ class ScoringEngine:
         cleaned = clean_transcript(raw_answer, question=clean_question)
         answer = cleaned["answer"]
         removed = cleaned["removed"]
+
+        # 口译「外译中」：题目为外语文字图片 → 图片直读判分（读图 + 中文回答）
+        images = normalize_images(item.get("images") or [])
+        if dim.modality == "translation" and images:
+            prompt = build_translation_vision_prompt(
+                dim, answer_transcript=answer, question=question
+            )
+            raw = self.client.chat_vision_json(SYSTEM_PROMPT, prompt, images)
+            return self._normalize(dim, raw, [], question=question, removed=removed)
 
         # 内容类/问答类维度引入 RAG 证据
         rag_evidence: List[Dict[str, Any]] = []

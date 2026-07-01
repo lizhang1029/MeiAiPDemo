@@ -17,6 +17,8 @@ DASHSCOPE_BASE_URL = os.getenv(
     "DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"
 )
 DEFAULT_MODEL = os.getenv("DASHSCOPE_MODEL", "qwen-plus")
+# 多模态视觉模型：用于口译「外译中」图片直读判分（读图 + 中文回答 → 判翻译准确度）
+DEFAULT_VL_MODEL = os.getenv("DASHSCOPE_VL_MODEL", "qwen-vl-max")
 
 
 class BailianClient:
@@ -56,6 +58,35 @@ class BailianClient:
         )
         content = resp.choices[0].message.content or "{}"
         return _safe_json(content)
+
+    def chat_vision_json(
+        self, system_prompt: str, user_prompt: str, image_urls: List[str]
+    ) -> Dict[str, Any]:
+        """多模态判分：把题目图片 + 文本一起交给视觉模型，返回结构化 JSON。
+
+        用于口译「外译中」：图片是外语原文，考生用中文口译；模型直接读图对照原意
+        判断中文回答的翻译准确度（无需先 OCR）。无 Key 或无图片时降级 mock。
+        """
+        if self.mock or not image_urls:
+            return _mock_vision_score(user_prompt, image_urls)
+
+        content: List[Dict[str, Any]] = [{"type": "text", "text": user_prompt}]
+        for url in image_urls:
+            content.append({"type": "image_url", "image_url": {"url": url}})
+        try:
+            resp = self._client.chat.completions.create(  # type: ignore[union-attr]
+                model=DEFAULT_VL_MODEL,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": content},
+                ],
+                temperature=0.2,
+            )
+            raw = resp.choices[0].message.content or "{}"
+            return _safe_json(raw)
+        except Exception as exc:  # pragma: no cover - 网络/模型问题降级
+            print(f"[BailianClient] 视觉判分失败，降级 mock: {exc}")
+            return _mock_vision_score(user_prompt, image_urls)
 
 
 def _safe_json(text: str) -> Dict[str, Any]:
@@ -177,6 +208,31 @@ def _mock_score(user_prompt: str) -> Dict[str, Any]:
         "confidence": confidence,
         "_mock": True,
     }
+
+
+def _mock_vision_score(user_prompt: str, image_urls: List[str]) -> Dict[str, Any]:
+    """外译中图片直读判分的 mock：无 Key/无视觉模型时，基于回答文本长度启发式给分。
+
+    真实模式下由 qwen-vl 读图对照外语原文判分；mock 无法真正读图，故仅依据中文
+    回答是否非空/篇幅给出占位分，并在依据中说明为占位结果。
+    """
+    base = _mock_score(user_prompt)
+    n_img = len(image_urls or [])
+    if not image_urls:
+        base["rationale"] = "未提供题目图片，无法进行外译中图片直读判分。" + base.get("rationale", "")
+        base["confidence"] = 0.4
+    else:
+        base["rationale"] = (
+            f"[占位] 已接收 {n_img} 张外语题目图片，但当前为 mock 模式无法真正读图；"
+            "以下依据中文回答篇幅估算。真实判分需配置 DASHSCOPE_API_KEY 并使用 qwen-vl。"
+            + base.get("rationale", "")
+        )
+        base["confidence"] = 0.5
+    base["evidence"] = (base.get("evidence") or []) + [
+        {"type": "image", "content": f"外语题目图片 ×{n_img}（图片直读判分输入）", "ref": "试题图片"}
+    ]
+    base["_mock_vision"] = True
+    return base
 
 
 def _mock_level(score: float, max_score: float) -> str:

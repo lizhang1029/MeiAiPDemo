@@ -96,6 +96,53 @@ def build_scoring_prompt(
     return "\n".join(parts)
 
 
+def build_translation_vision_prompt(
+    dimension: Dimension,
+    *,
+    answer_transcript: str,
+    question: str = "",
+) -> str:
+    """口译「外译中」图片直读判分 Prompt。
+
+    题目为一段小语种（外语）文字的图片（随消息附上），考生用中文口译。要求模型
+    直接读图理解外语原文含义，再判断考生中文回答是否准确传达原意，按评分表档位打分。
+    不需要先做 OCR，也不要求逐字翻译，只判「意思是否准确、完整、通顺」。
+    """
+    parts: List[str] = []
+    parts.append("# 评分任务：口译「外译中」图片直读判分")
+    parts.append(_dimension_brief(dimension))
+    parts.append(
+        "\n# 题目说明\n随本消息附上的图片是一段外语（可能为英语/德语/泰语/印尼语/韩语/"
+        "西班牙语/俄语/法语/日语/越南语等）文字，即本题原文。请先读图理解该外语原文的完整含义。"
+    )
+    if question:
+        parts.append("\n# 补充题干\n" + question)
+    parts.append("\n# 考生中文口译（ASR 转写，已剔除考官读题）")
+    parts.append(answer_transcript or "（无转写内容）")
+    parts.append(
+        "\n# 判分要求\n"
+        "1. 对照图片中外语原文的真实含义，判断考生中文回答是否**准确、完整、通顺**地传达了原意；\n"
+        "2. 不要求逐字直译，重在意思准确；漏译关键信息、误译、表达不通均应扣分；\n"
+        "3. 严格按该维度评分等级区间给**整数**分，不得超过满分；\n"
+        "4. 在 evidence 中简述图片外语原文大意与考生回答的差异作为依据。"
+    )
+    schema = {
+        "dimension_key": dimension.key,
+        "dimension_name": dimension.name,
+        "max_score": dimension.max_score,
+        "score": "整数（0~该维度满分）",
+        "level": "优秀/良好/合格/不合格",
+        "items": "[]",
+        "deductions": '[{"reason":"扣分原因","points":整数,"evidence":"原文大意与回答差异"}]',
+        "rationale": "判分依据：图片外语原文大意 + 中文回答准确度评价",
+        "evidence": '[{"type":"image|transcript","content":"证据内容","ref":"来源"}]',
+        "confidence": "0~1 之间的小数",
+    }
+    parts.append("\n严格按以下 JSON 结构输出（不要输出多余文字、不要 Markdown 代码块）：")
+    parts.append(json.dumps(schema, ensure_ascii=False, indent=2))
+    return "\n".join(parts)
+
+
 def build_review_prompt(scores: List[Dict[str, Any]], total: float) -> str:
     """汇总评审 Prompt：生成总体评语与改进建议。"""
     return (

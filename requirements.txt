@@ -3,5 +3,9 @@ uvicorn[standard]==0.34.0
 pydantic==2.10.4
 openai==1.59.6
 python-multipart==0.0.18
+# 多格式试题录入：PDF 逐页抽文字 + 渲染为图片（外译中图片直读判分）
+pymupdf==1.28.0
+# 图片直读判分：把 http(s) 图片下载转 base64 再喂给多模态模型
+requests==2.34.2
 # 可选：启用阿里百炼 Paraformer 语音识别（无则 /transcribe 自动降级 mock）
 dashscope==1.20.14

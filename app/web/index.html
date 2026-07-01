@@ -113,13 +113,18 @@
 
       <!-- ③ 试题 -->
       <div class="step">
-        <p class="st">③ 录入并解析试题 JSON（仅取题干）</p>
+        <p class="st">③ 录入并解析试题（JSON 文本 / 文件：JSON·PDF·图片）</p>
         <textarea id="paperJson" style="min-height:80px" placeholder="粘贴考务接口下发的试题 JSON（sections → groups → items），或点下方按钮载入样例。仅提取各题题干，按顺序对应「按题评分」的评分项。"></textarea>
         <div class="row" style="margin-top:8px">
           <button class="ghost" id="loadZh">载入普通话样例</button>
           <button class="ghost" id="loadVi">载入越南语样例</button>
           <button id="parsePaper">解析题干</button>
         </div>
+        <div class="row" style="margin-top:8px">
+          <input type="file" id="paperFile" accept=".json,application/json,.pdf,application/pdf,image/*" style="flex:1;font-size:12px;padding:4px" />
+          <button id="uploadPaper">上传并解析文件</button>
+        </div>
+        <p class="hint">口译「外译中」题目可直接上传外语文字<b>图片</b>或含图 <b>PDF</b>：判分时把题目图片 + 考生中文回答交给 qwen-vl-max 图片直读（无需 OCR、无需译文）。</p>
         <p class="hint" id="paperInfo">导入的 JSON 只提供题干。</p>
       </div>
 
@@ -167,6 +172,7 @@
 let RUBRIC = null;     // 解析后的评分表 {rubric_name,total_max,items:[...]}
 let SEGMENTS = [];     // 整段录音分段 [{index,begin_ms,end_ms,text}]
 let QSTEMS = [];       // 导入试题题干 [{question,images,name}]
+let ROW_IMAGES = {};   // 评分项 idx → 题目图片[]（外译中图片直读判分用）
 let IMPORTED = null;   // 试题解析结果
 let SAMPLES = null;    // 试题样例缓存
 let RUBRIC_SAMPLES = null;
@@ -286,6 +292,25 @@ async function parsePaper(){
   document.getElementById('paperInfo').textContent = `已解析：${IMPORTED.paper_name} · 取得 ${QSTEMS.length} 道题干（与「按题评分」项按顺序对应）。`;
   buildMap();
 }
+async function uploadPaper(){
+  const fi = document.getElementById('paperFile');
+  if (!fi.files.length){ alert('请先选择试题文件（JSON / PDF / 图片）'); return; }
+  const info = document.getElementById('paperInfo');
+  const btn = document.getElementById('uploadPaper');
+  btn.disabled = true; info.textContent = '⏳ 正在上传并解析试题文件…';
+  try {
+    const fd = new FormData(); fd.append('file', fi.files[0]);
+    const r = await fetch('/papers/import_file', {method:'POST', body: fd});
+    if (!r.ok){ const e=await r.json().catch(()=>({})); info.textContent='解析失败：'+(e.detail||r.status); return; }
+    IMPORTED = await r.json();
+    QSTEMS = (IMPORTED.dimensions||[]).map(d=>({question:d.question||'', images:d.images||[], name:d.dimension_name||''}));
+    const nImg = QSTEMS.reduce((s,q)=>s+(q.images?q.images.length:0),0);
+    const fmt = {json:'JSON',pdf:'PDF',image:'图片'}[IMPORTED.source_format]||IMPORTED.source_format||'文件';
+    info.textContent = `已从${fmt}解析：${IMPORTED.paper_name} · ${QSTEMS.length} 道题干 · ${nImg} 张题目图片（外译中图片将用于图片直读判分）。`;
+    buildMap();
+  } catch(e){ info.textContent='解析异常：'+e.message; }
+  finally { btn.disabled = false; }
+}
 
 // ---------- ④ 音频 ----------
 async function transcribeFull(){
@@ -393,6 +418,7 @@ async function buildMap(){
   }));
 
   let qstemIdx = -1;
+  ROW_IMAGES = {};
   const html = RUBRIC.items.map((it, idx) => {
     const a = A[idx] || {};
     const eff = a.effective_source || it.source;
@@ -403,6 +429,7 @@ async function buildMap(){
       const q = hasPaper ? (QSTEMS[qstemIdx] || {question:'', images:[]}) : {question: a.question||'', images:[]};
       const segI = (a.seg_index===null||a.seg_index===undefined) ? '' : a.seg_index;
       const seg = (segI!=='') ? SEGMENTS[segI] : null;
+      ROW_IMAGES[idx] = q.images || [];
       const imgs = (q.images||[]).map((u,k)=>`<a class="img" href="${esc(u)}" target="_blank">🖼 题目图片${(q.images.length>1)?(' '+(k+1)):''}</a>`).join(' ');
       const qVal = q.question || '';
       const qLabel = hasPaper ? '题干（来自导入 JSON，只读）' : '题干（未导入试题，已从录音自动分离考官提问，可修改）';
@@ -484,6 +511,7 @@ async function run(){
       dimension_key: it.key, dimension_name: it.name, modality: it.modality,
       max_score: it.max_score, weight: it.weight, scoring_source: eff,
       question, answer_transcript: answer, manual_score: manual,
+      images: (eff === 'per_question' ? (ROW_IMAGES[idx] || []) : []),
       reference_answer: it.standards_text || null,
       levels: it.levels || null, criteria: it.criteria || null,
     });
@@ -529,6 +557,7 @@ document.getElementById('parseRubric').onclick = parseRubric;
 document.getElementById('loadZh').onclick = () => loadSample('zh');
 document.getElementById('loadVi').onclick = () => loadSample('vi');
 document.getElementById('parsePaper').onclick = parsePaper;
+document.getElementById('uploadPaper').onclick = uploadPaper;
 document.getElementById('transcribe').onclick = transcribeFull;
 document.getElementById('buildMap').onclick = buildMap;
 document.getElementById('run').onclick = run;

@@ -29,6 +29,7 @@ from .core.asr import ASRClient
 from .core.knowledge_base import KnowledgeBase
 from .core.align import align_items_segments
 from .core.paper_import import build_rubric, parse_exam_paper
+from .core.vision import is_image_filename, parse_image_paper, parse_pdf_paper
 from .core.positions_store import (
     delete_position,
     get_saved_position,
@@ -174,6 +175,39 @@ def import_paper(
     if not parsed["dimensions"]:
         raise HTTPException(status_code=400, detail="未从试题中解析出任何维度")
     return parsed
+
+
+@app.post("/papers/import_file")
+async def import_paper_file(
+    file: UploadFile = File(..., description="试题文件：JSON / PDF / 图片"),
+    pick: str = Form("first"),
+) -> Dict[str, Any]:
+    """多格式试题录入：支持考务 JSON、PDF、图片（jpg/png 等）。
+
+    - JSON：按考务接口结构解析（维度/题目/图片）。
+    - PDF：逐页抽取题干文字并把每页渲染为图片附上（扫描件仅保留图片）。
+    - 图片：整张图片作为一道外译中题目，交由多模态模型直读判分。
+    """
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="上传文件为空")
+    fname = file.filename or "paper"
+    lower = fname.lower()
+    if lower.endswith(".json") or (file.content_type or "").endswith("json"):
+        try:
+            paper = json.loads(data.decode("utf-8"))
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"JSON 解析失败：{exc}")
+        if not paper.get("sections"):
+            raise HTTPException(status_code=400, detail="试题 JSON 缺少 sections")
+        parsed = parse_exam_paper(paper, pick=pick)
+        parsed["source_format"] = "json"
+        return parsed
+    if lower.endswith(".pdf") or (file.content_type or "") == "application/pdf":
+        return parse_pdf_paper(data, fname)
+    if is_image_filename(fname) or (file.content_type or "").startswith("image/"):
+        return parse_image_paper(data, fname)
+    raise HTTPException(status_code=400, detail="不支持的试题格式，请上传 JSON / PDF / 图片")
 
 
 @app.post("/interviews/custom", response_model=ScoreResult)
